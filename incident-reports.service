@@ -1,0 +1,27 @@
+[Unit]
+Description=Incident Reports Application
+After=network.target
+
+[Service]
+Type=notify
+User=incident-reports
+Group=incident-reports
+WorkingDirectory=/opt/incident-reports
+Environment=PATH=/opt/incident-reports/venv/bin
+Environment=FLASK_APP=app.py
+Environment=FLASK_ENV=production
+Environment=SECRET_KEY=your-secret-key-change-this-in-production
+Environment=DATABASE_URL=sqlite:////var/lib/incident-reports/incidents.db
+ExecStartPre=/bin/mkdir -p /var/run/incident-reports
+ExecStartPre=/bin/chown incident-reports:incident-reports /var/run/incident-reports
+ExecStartPre=/bin/chmod 755 /var/run/incident-reports
+ExecStart=/opt/incident-reports/venv/bin/gunicorn --config gunicorn.conf.py --bind 0.0.0.0:8000 app:app
+ExecReload=/bin/kill -s HUP $MAINPID
+KillMode=mixed
+TimeoutStopSec=5
+PrivateTmp=true
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target 

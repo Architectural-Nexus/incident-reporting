@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{% block title %}Page Not Found - Incident Reporting System{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div style="text-align: center; padding: 3rem;">
+        <h1 style="font-size: 4rem; color: var(--text-secondary); margin-bottom: 1rem;">404</h1>
+        <h2 style="margin-bottom: 1rem; color: var(--text-primary);">Page Not Found</h2>
+        <p style="margin-bottom: 2rem; color: var(--text-secondary);">The page you're looking for doesn't exist.</p>
+        <a href="{{ url_for('index') }}" class="btn btn-primary">Go to Home</a>
+    </div>
+</div>
+{% endblock %} 

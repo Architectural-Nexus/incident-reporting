@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  incident-reports:
+    build: .
+    container_name: incident-reports-app
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:80:8000"  # Only bind to localhost for security
+    environment:
+      - SECRET_KEY=${SECRET_KEY}
+      - DATABASE_URL=${DATABASE_URL:-sqlite:///instance/incidents.db}
+      - FLASK_ENV=production
+    volumes:
+      - incident_data:/app/instance
+      - incident_logs:/var/log/gunicorn
+    networks:
+      - incident-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+
+  nginx:
+    image: nginx:alpine
+    container_name: incident-reports-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      - incident-reports
+    networks:
+      - incident-network
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.25'
+
+volumes:
+  incident_data:
+    driver: local
+  incident_logs:
+    driver: local
+  nginx_logs:
+    driver: local
+
+networks:
+  incident-network:
+    driver: bridge 

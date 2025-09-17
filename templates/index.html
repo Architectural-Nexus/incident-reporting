@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+
+{% block title %}Report Incident - Incident Reporting System{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1 style="margin-bottom: 1.5rem; color: var(--text-primary);">Report an Incident</h1>
+    
+    <form id="incidentForm">
+        <div class="form-group">
+            <label for="reporter_name" class="form-label">Your Name</label>
+            <input type="text" id="reporter_name" name="reporter_name" class="form-input" 
+                   placeholder="Anonymous (leave blank to remain anonymous)">
+        </div>
+
+        <div class="form-group">
+            <label for="incident_datetime" class="form-label">Time and Date of Incident <span style="color: var(--danger-color);">*</span></label>
+            <input type="datetime-local" id="incident_datetime" name="incident_datetime" class="form-input" required>
+        </div>
+
+        <div class="form-group">
+            <label for="location" class="form-label">Location of Incident <span style="color: var(--danger-color);">*</span></label>
+            <input type="text" id="location" name="location" class="form-input" 
+                   placeholder="e.g., Building A, Room 101, Parking Lot" required>
+        </div>
+
+        <div class="form-group">
+            <label for="persons_involved" class="form-label">Names of Persons Involved in Incident <span style="color: var(--danger-color);">*</span></label>
+            <textarea id="persons_involved" name="persons_involved" class="form-input form-textarea" 
+                      placeholder="List all persons involved in the incident, including witnesses" required></textarea>
+        </div>
+
+        <div class="form-group">
+            <label for="description" class="form-label">Description of Incident <span style="color: var(--danger-color);">*</span></label>
+            <textarea id="description" name="description" class="form-input form-textarea" 
+                      placeholder="Provide a detailed description of what happened, including any relevant details" required></textarea>
+        </div>
+
+        <div style="display: flex; gap: 1rem; margin-top: 2rem;">
+            <button type="submit" class="btn btn-primary">Submit Report</button>
+            <button type="reset" class="btn btn-secondary">Clear Form</button>
+        </div>
+    </form>
+</div>
+
+<div id="messageContainer" style="display: none;"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('incidentForm');
+    const messageContainer = document.getElementById('messageContainer');
+    
+    // Set default datetime to current time
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    document.getElementById('incident_datetime').value = `${year}-${month}-${day}T${hours}:${minutes}`;
+    
+    function showMessage(message, type) {
+        messageContainer.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
+        messageContainer.style.display = 'block';
+        
+        // Scroll to message
+        messageContainer.scrollIntoView({ behavior: 'smooth' });
+        
+        // Auto-hide success messages after 5 seconds
+        if (type === 'success') {
+            setTimeout(() => {
+                messageContainer.style.display = 'none';
+            }, 5000);
+        }
+    }
+    
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const submitBtn = form.querySelector('button[type="submit"]');
+        const originalText = submitBtn.textContent;
+        submitBtn.textContent = 'Submitting...';
+        submitBtn.disabled = true;
+        
+        try {
+            const formData = new FormData(form);
+            
+            const response = await fetch('/submit_incident', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                showMessage(result.message, 'success');
+                form.reset();
+                // Reset datetime to current time
+                const now = new Date();
+                const year = now.getFullYear();
+                const month = String(now.getMonth() + 1).padStart(2, '0');
+                const day = String(now.getDate()).padStart(2, '0');
+                const hours = String(now.getHours()).padStart(2, '0');
+                const minutes = String(now.getMinutes()).padStart(2, '0');
+                document.getElementById('incident_datetime').value = `${year}-${month}-${day}T${hours}:${minutes}`;
+            } else {
+                showMessage(result.message, 'error');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            showMessage('An error occurred while submitting the report. Please try again.', 'error');
+        } finally {
+            submitBtn.textContent = originalText;
+            submitBtn.disabled = false;
+        }
+    });
+    
+    // Form validation
+    const requiredFields = form.querySelectorAll('[required]');
+    requiredFields.forEach(field => {
+        field.addEventListener('blur', function() {
+            if (!this.value.trim()) {
+                this.style.borderColor = 'var(--danger-color)';
+            } else {
+                this.style.borderColor = 'var(--border-color)';
+            }
+        });
+        
+        field.addEventListener('input', function() {
+            if (this.value.trim()) {
+                this.style.borderColor = 'var(--border-color)';
+            }
+        });
+    });
+});
+</script>
+{% endblock %} 

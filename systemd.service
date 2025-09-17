@@ -1,0 +1,18 @@
+[Unit]
+Description=Incident Reports Gunicorn daemon
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/path/to/your/app
+Environment="PATH=/path/to/your/venv/bin"
+ExecStart=/path/to/your/venv/bin/gunicorn --config gunicorn.conf.py wsgi:app
+ExecReload=/bin/kill -s HUP $MAINPID
+KillMode=mixed
+TimeoutStopSec=5
+PrivateTmp=true
+Restart=always
+
+[Install]
+WantedBy=multi-user.target 

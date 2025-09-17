@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Incident Reporting System{% endblock %}</title>
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='assets/favicon/favicon-32x32.ico') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='assets/favicon/favicon-16x16.png') }}">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='assets/favicon/favicon-32x32.png') }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='assets/favicon/apple-touch-icon.png') }}">
+    <link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='assets/favicon/android-chrome-192x192.png') }}">
+    <link rel="icon" type="image/png" sizes="512x512" href="{{ url_for('static', filename='assets/favicon/android-chrome-512x512.png') }}">
+    
+    <!-- Additional meta tags for better favicon support -->
+    <meta name="theme-color" content="#4aa897">
+    <meta name="msapplication-TileColor" content="#4aa897">
+    <meta name="msapplication-config" content="{{ url_for('static', filename='assets/favicon/browserconfig.xml') }}">
+    <link rel="manifest" href="{{ url_for('static', filename='assets/favicon/site.webmanifest') }}">
+    <style>
+        :root {
+            /* Primary Background - Soft Blue */
+            --background-color: #f0f6fb;
+            --surface-color: #ffffff;
+            
+            /* Accent / Primary Action - Muted Teal */
+            --primary-color: #4aa897;
+            --primary-hover: #3d8a7a;
+            
+            /* Text / Foreground - Charcoal Gray */
+            --text-primary: #333333;
+            --text-secondary: #666666;
+            
+            /* Success / Confirmation - Pastel Green */
+            --success-color: #a3d9a5;
+            --success-hover: #8bc48d;
+            
+            /* Error or Alert Messages - Soft Red */
+            --danger-color: #e57373;
+            --danger-hover: #d16565;
+            
+            /* Warning - Soft Orange */
+            --warning-color: #f2b2ae;
+            --warning-hover: #e8a39f;
+            
+            /* Neutral Elements - Cool Grays */
+            --secondary-color: #bcc2cc;
+            --border-color: #dcdfe3;
+            
+            /* Shadows - Softer for gentler appearance */
+            --shadow: 0 2px 4px 0 rgba(0, 0, 0, 0.08), 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+            --shadow-lg: 0 8px 12px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background-color: var(--background-color);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 1rem;
+        }
+
+        .header {
+            background-color: var(--surface-color);
+            box-shadow: var(--shadow);
+            padding: 1rem 0;
+            margin-bottom: 2rem;
+        }
+
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: var(--primary-color);
+            text-decoration: none;
+        }
+
+        .nav {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .nav-link {
+            color: var(--text-secondary);
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            border-radius: 0.375rem;
+            transition: all 0.2s;
+        }
+
+        .nav-link:hover {
+            background-color: var(--background-color);
+            color: var(--text-primary);
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 0.375rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+        }
+
+        .btn-primary {
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background-color: var(--primary-hover);
+        }
+
+        .btn-secondary {
+            background-color: var(--secondary-color);
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background-color: #a5aeb8;
+        }
+
+        .btn-danger {
+            background-color: var(--danger-color);
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background-color: var(--danger-hover);
+        }
+
+        .btn-success {
+            background-color: var(--success-color);
+            color: white;
+        }
+
+        .btn-success:hover {
+            background-color: var(--success-hover);
+        }
+
+        .card {
+            background-color: var(--surface-color);
+            border-radius: 0.5rem;
+            box-shadow: var(--shadow);
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid var(--border-color);
+            border-radius: 0.375rem;
+            font-size: 0.875rem;
+            transition: border-color 0.2s;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(74, 168, 151, 0.1);
+        }
+
+        .form-textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+
+        .alert {
+            padding: 1rem;
+            border-radius: 0.375rem;
+            margin-bottom: 1rem;
+        }
+
+        .alert-success {
+            background-color: #cce8d8;
+            color: #2c5530;
+            border: 1px solid #a3d9a5;
+        }
+
+        .alert-error {
+            background-color: #f2b2ae;
+            color: #8b2a2a;
+            border: 1px solid #e57373;
+        }
+
+        .alert-warning {
+            background-color: #f2b2ae;
+            color: #8b2a2a;
+            border: 1px solid #e57373;
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: var(--surface-color);
+            border-radius: 0.5rem;
+            overflow: hidden;
+            box-shadow: var(--shadow);
+        }
+
+        .table th,
+        .table td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .table th {
+            background-color: var(--background-color);
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .table tr:hover {
+            background-color: var(--background-color);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .badge-success {
+            background-color: #cce8d8;
+            color: #2c5530;
+        }
+
+        .badge-danger {
+            background-color: #f2b2ae;
+            color: #8b2a2a;
+        }
+
+        .search-bar {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .search-input {
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .sort-controls {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-secondary);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: var(--text-secondary);
+        }
+
+        .empty-state h3 {
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+        }
+
+        @media (max-width: 768px) {
+            .header-content {
+                flex-direction: column;
+                gap: 1rem;
+            }
+
+            .nav {
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+
+            .search-bar {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .sort-controls {
+                justify-content: center;
+            }
+
+            .table {
+                font-size: 0.875rem;
+            }
+
+            .table th,
+            .table td {
+                padding: 0.5rem;
+            }
+        }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <header class="header">
+        <div class="container">
+            <div class="header-content">
+                <a href="{{ url_for('index') }}" class="logo">Architectural Nexus Incident Reporting System</a>
+                <nav class="nav">
+                    <a href="{{ url_for('index') }}" class="nav-link">Report Incident</a>
+                    {% if current_user.is_authenticated %}
+                        <a href="{{ url_for('admin_dashboard') }}" class="nav-link">Dashboard</a>
+                        <a href="{{ url_for('admin_users') }}" class="nav-link">Users</a>
+                        <a href="{{ url_for('admin_logout') }}" class="nav-link">Logout</a>
+                    {% else %}
+                        <a href="{{ url_for('admin_login') }}" class="nav-link">Admin Login</a>
+                    {% endif %}
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <main class="container">
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="alert alert-success">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </main>
+
+    {% block extra_js %}{% endblock %}
+</body>
+</html> 

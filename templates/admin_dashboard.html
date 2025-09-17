@@ -1,0 +1,483 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Dashboard - Incident Reporting System{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+        <h1 style="color: var(--text-primary);">Incident Reports Dashboard</h1>
+        <a href="{{ url_for('export_incidents') }}" class="btn btn-primary">Export to CSV</a>
+    </div>
+
+    <div class="search-bar">
+        <input type="text" id="searchInput" class="form-input search-input" placeholder="Search incidents...">
+    </div>
+    
+    <div class="filter-controls">
+        <div class="date-filters">
+            <label for="startDate" style="font-weight: 500; color: var(--text-primary);">From:</label>
+            <input type="date" id="startDate" class="form-input" style="width: auto;">
+            <label for="endDate" style="font-weight: 500; color: var(--text-primary);">To:</label>
+            <input type="date" id="endDate" class="form-input" style="width: auto;">
+            <button id="clearDates" class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.75rem;">Clear Dates</button>
+        </div>
+        <div class="sort-controls">
+            <label for="sortBy" style="font-weight: 500; color: var(--text-primary);">Sort by:</label>
+            <select id="sortBy" class="form-input" style="width: auto;">
+                <option value="submitted_at">Submission Date</option>
+                <option value="incident_datetime">Incident Date</option>
+                <option value="reporter_name">Reporter Name</option>
+                <option value="location">Location</option>
+            </select>
+            <select id="sortOrder" class="form-input" style="width: auto;">
+                <option value="desc">Newest First</option>
+                <option value="asc">Oldest First</option>
+            </select>
+        </div>
+    </div>
+
+    <div id="incidentsContainer">
+        <div class="loading">Loading incidents...</div>
+    </div>
+</div>
+
+<!-- Incident Details Modal -->
+<div id="incidentModal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 id="modalTitle">Incident Details</h2>
+            <span class="close">&times;</span>
+        </div>
+        <div class="modal-body">
+            <div class="incident-details">
+                <div class="detail-row">
+                    <div class="detail-label">Reporter Name</div>
+                    <div class="detail-value" id="modalReporter"></div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">Incident Date/Time</div>
+                    <div class="detail-value" id="modalIncidentDateTime"></div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">Location</div>
+                    <div class="detail-value" id="modalLocation"></div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">Persons Involved</div>
+                    <div class="detail-value" id="modalPersonsInvolved"></div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">Description</div>
+                    <div class="detail-value scrollable" id="modalDescription"></div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">Submitted</div>
+                    <div class="detail-value" id="modalSubmitted"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Modal styles */
+    .modal {
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(2px);
+    }
+
+    .modal-content {
+        background-color: var(--surface-color);
+        margin: 5% auto;
+        padding: 0;
+        border-radius: 0.5rem;
+        width: 90%;
+        max-width: 900px;
+        box-shadow: var(--shadow-lg);
+        animation: modalSlideIn 0.3s ease-out;
+    }
+
+    @keyframes modalSlideIn {
+        from {
+            opacity: 0;
+            transform: translateY(-50px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1.5rem;
+        border-bottom: 1px solid var(--border-color);
+        background-color: var(--background-color);
+        border-radius: 0.5rem 0.5rem 0 0;
+    }
+
+    .modal-header h2 {
+        margin: 0;
+        color: var(--text-primary);
+        font-size: 1.25rem;
+    }
+
+    .close {
+        color: var(--text-secondary);
+        font-size: 1.5rem;
+        font-weight: bold;
+        cursor: pointer;
+        transition: color 0.2s;
+    }
+
+    .close:hover {
+        color: var(--text-primary);
+    }
+
+    .modal-body {
+        padding: 1.5rem;
+    }
+
+    .incident-details {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .detail-row {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .detail-label {
+        font-weight: 700;
+        color: var(--text-primary);
+        font-size: 0.875rem;
+        margin-bottom: 0.25rem;
+    }
+
+    .detail-value {
+        color: var(--text-primary);
+        line-height: 1.6;
+        margin-bottom: 1rem;
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+
+    .detail-value.scrollable {
+        max-height: 200px;
+        overflow-y: auto;
+        padding: 0.75rem;
+        background-color: var(--background-color);
+        border-radius: 0.375rem;
+        border: 1px solid var(--border-color);
+    }
+
+    .detail-value.scrollable::-webkit-scrollbar {
+        width: 8px;
+    }
+
+    .detail-value.scrollable::-webkit-scrollbar-track {
+        background: var(--background-color);
+        border-radius: 4px;
+    }
+
+    .detail-value.scrollable::-webkit-scrollbar-thumb {
+        background: var(--border-color);
+        border-radius: 4px;
+    }
+
+    .detail-value.scrollable::-webkit-scrollbar-thumb:hover {
+        background: var(--text-secondary);
+    }
+
+    /* Table row hover effect */
+    .incident-row:hover {
+        background-color: var(--background-color) !important;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        transition: all 0.2s ease;
+    }
+
+    /* Filter controls container */
+    .filter-controls {
+        display: flex;
+        gap: 2rem;
+        margin-bottom: 1.5rem;
+        align-items: center;
+        flex-wrap: wrap;
+        padding: 1rem;
+        background-color: var(--background-color);
+        border-radius: 0.5rem;
+        border: 1px solid var(--border-color);
+    }
+
+    /* Date filters */
+    .date-filters {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    /* Responsive modal */
+    @media (max-width: 768px) {
+        .modal-content {
+            width: 95%;
+            margin: 10% auto;
+        }
+        
+        .modal-header {
+            padding: 1rem;
+        }
+        
+        .modal-body {
+            padding: 1rem;
+        }
+        
+        .detail-row {
+            gap: 0.25rem;
+        }
+        
+        .detail-value {
+            padding: 0.5rem;
+        }
+        
+        .detail-value.scrollable {
+            max-height: 150px;
+            padding: 0.5rem;
+        }
+        
+        .filter-controls {
+            flex-direction: column;
+            gap: 1rem;
+            align-items: stretch;
+        }
+        
+        .date-filters {
+            justify-content: center;
+        }
+        
+        .sort-controls {
+            justify-content: center;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentSearch = '';
+let currentStartDate = '';
+let currentEndDate = '';
+let currentSortBy = 'submitted_at';
+let currentSortOrder = 'desc';
+let incidents = [];
+
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('searchInput');
+    const startDateInput = document.getElementById('startDate');
+    const endDateInput = document.getElementById('endDate');
+    const clearDatesBtn = document.getElementById('clearDates');
+    const sortBySelect = document.getElementById('sortBy');
+    const sortOrderSelect = document.getElementById('sortOrder');
+    const incidentsContainer = document.getElementById('incidentsContainer');
+
+    // Debounce function for search
+    function debounce(func, wait) {
+        let timeout;
+        return function executedFunction(...args) {
+            const later = () => {
+                clearTimeout(timeout);
+                func(...args);
+            };
+            clearTimeout(timeout);
+            timeout = setTimeout(later, wait);
+        };
+    }
+
+    // Load incidents
+    async function loadIncidents() {
+        try {
+            incidentsContainer.innerHTML = '<div class="loading">Loading incidents...</div>';
+            
+            const params = new URLSearchParams({
+                search: currentSearch,
+                start_date: currentStartDate,
+                end_date: currentEndDate,
+                sort_by: currentSortBy,
+                sort_order: currentSortOrder
+            });
+            
+            const response = await fetch(`/admin/incidents?${params}`);
+            const result = await response.json();
+            
+            if (result.success) {
+                incidents = result.incidents;
+                renderIncidents();
+            } else {
+                incidentsContainer.innerHTML = '<div class="alert alert-error">Error loading incidents</div>';
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            incidentsContainer.innerHTML = '<div class="alert alert-error">Error loading incidents</div>';
+        }
+    }
+
+    // Render incidents table
+    function renderIncidents() {
+        if (incidents.length === 0) {
+            incidentsContainer.innerHTML = `
+                <div class="empty-state">
+                    <h3>No incidents found</h3>
+                    <p>${currentSearch ? 'No incidents match your search criteria.' : 'No incidents have been reported yet.'}</p>
+                </div>
+            `;
+            return;
+        }
+
+        const tableHTML = `
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Reporter</th>
+                        <th>Incident Date/Time</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${incidents.map(incident => `
+                        <tr class="incident-row" data-incident='${JSON.stringify(incident)}' style="cursor: pointer;">
+                            <td>${escapeHtml(incident.reporter_name)}</td>
+                            <td>${formatDateTime(incident.incident_datetime)}</td>
+                            <td>${escapeHtml(incident.description.length > 100 ? incident.description.substring(0, 100) + '...' : incident.description)}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+        
+        incidentsContainer.innerHTML = tableHTML;
+    }
+
+    // Utility functions
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function formatDateTime(dateTimeStr) {
+        const date = new Date(dateTimeStr);
+        return date.toLocaleString();
+    }
+
+    // Event listeners
+    const debouncedSearch = debounce(function(value) {
+        currentSearch = value;
+        loadIncidents();
+    }, 300);
+
+    searchInput.addEventListener('input', function() {
+        debouncedSearch(this.value);
+    });
+
+    // Date filter event listeners
+    startDateInput.addEventListener('change', function() {
+        currentStartDate = this.value;
+        loadIncidents();
+    });
+
+    endDateInput.addEventListener('change', function() {
+        currentEndDate = this.value;
+        loadIncidents();
+    });
+
+    // Clear dates button
+    clearDatesBtn.addEventListener('click', function() {
+        startDateInput.value = '';
+        endDateInput.value = '';
+        currentStartDate = '';
+        currentEndDate = '';
+        loadIncidents();
+    });
+
+    sortBySelect.addEventListener('change', function() {
+        currentSortBy = this.value;
+        loadIncidents();
+    });
+
+    sortOrderSelect.addEventListener('change', function() {
+        currentSortOrder = this.value;
+        loadIncidents();
+    });
+
+    // Modal functionality
+    const modal = document.getElementById('incidentModal');
+    const closeBtn = document.querySelector('.close');
+    
+    // Close modal when clicking the X button
+    closeBtn.addEventListener('click', function() {
+        modal.style.display = 'none';
+    });
+    
+    // Close modal when clicking outside of it
+    window.addEventListener('click', function(event) {
+        if (event.target === modal) {
+            modal.style.display = 'none';
+        }
+    });
+    
+    // Close modal with Escape key
+    document.addEventListener('keydown', function(event) {
+        if (event.key === 'Escape' && modal.style.display === 'block') {
+            modal.style.display = 'none';
+        }
+    });
+    
+    // Function to show incident details in modal
+    function showIncidentDetails(incident) {
+        document.getElementById('modalReporter').textContent = incident.reporter_name;
+        document.getElementById('modalIncidentDateTime').textContent = formatDateTime(incident.incident_datetime);
+        document.getElementById('modalLocation').textContent = incident.location;
+        document.getElementById('modalPersonsInvolved').textContent = incident.persons_involved;
+        document.getElementById('modalDescription').textContent = incident.description;
+        document.getElementById('modalSubmitted').textContent = formatDateTime(incident.submitted_at);
+        
+        modal.style.display = 'block';
+    }
+    
+    // Add click event listeners to table rows after rendering
+    function addTableRowListeners() {
+        const rows = document.querySelectorAll('.incident-row');
+        rows.forEach(row => {
+            row.addEventListener('click', function() {
+                const incidentData = JSON.parse(this.getAttribute('data-incident'));
+                showIncidentDetails(incidentData);
+            });
+        });
+    }
+    
+    // Update renderIncidents to add event listeners
+    const originalRenderIncidents = renderIncidents;
+    renderIncidents = function() {
+        originalRenderIncidents();
+        addTableRowListeners();
+    };
+
+    // Initial load
+    loadIncidents();
+});
+</script>
+{% endblock %} 
