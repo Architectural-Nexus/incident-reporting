@@ -253,29 +253,46 @@ initialize_database() {
     # Activate virtual environment and check if Flask is installed
     source $VENV_DIR/bin/activate
     
-    # Verify Flask installation
-    if ! python -c "import flask" 2>/dev/null; then
-        print_error "Flask is not installed in the virtual environment"
-        print_status "Attempting to reinstall dependencies..."
-        
-        # Try to reinstall dependencies
-        pip install --upgrade pip
-        pip install -r requirements.txt
-        
-        # Check again
-        if ! python -c "import flask" 2>/dev/null; then
-            print_error "Failed to install Flask. Please check requirements.txt and internet connectivity"
-            exit 1
-        fi
-    fi
+    # Debug Python and virtual environment setup
+    print_status "Debugging Python environment..."
+    echo "Current working directory: $(pwd)"
+    echo "Virtual environment path: $VENV_DIR"
+    echo "Python executable: $(which python)"
+    echo "Python version: $(python --version)"
+    echo "Pip executable: $(which pip)"
+    
+    # List installed packages
+    print_status "Installed packages in virtual environment:"
+    pip list | grep -i flask || true
+    
+    # Try importing Flask with detailed error information
+    print_status "Testing Flask import..."
+    python -c "
+import sys
+print('Python executable:', sys.executable)
+print('Python path:', sys.path)
+try:
+    import flask
+    print('Flask version:', flask.__version__)
+    print('Flask module location:', flask.__file__)
+except ImportError as e:
+    print('Flask import error:', str(e))
+    import os
+    print('PYTHONPATH:', os.environ.get('PYTHONPATH', 'Not set'))
+"
     
     print_status "Flask is available, proceeding with database initialization..."
     
     # Set environment variable for database location
     export DATABASE_URL="sqlite:///$DATA_DIR/incidents.db"
     
+    # Use the virtual environment's Python explicitly
+    VENV_PYTHON="$VENV_DIR/bin/python"
+    
+    print_status "Using Python executable: $VENV_PYTHON"
+    
     # Initialize database
-    python -c "
+    $VENV_PYTHON -c "
 from app import app, db
 with app.app_context():
     db.create_all()
@@ -288,7 +305,7 @@ with app.app_context():
     fi
     
     # Create default admin user
-    python -c "
+    $VENV_PYTHON -c "
 from app import app, db, User
 with app.app_context():
     # Check if admin user already exists
