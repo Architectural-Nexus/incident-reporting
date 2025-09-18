@@ -231,7 +231,97 @@ with app.app_context():
     fi
 }
 
-# Function to setup firewall (optional)
+# Function to create robots.txt file
+create_robots_txt() {
+    print_status "Creating robots.txt file..."
+    
+    cat > $APP_DIR/robots.txt << EOF
+User-agent: *
+Disallow: /
+EOF
+    
+    chown $APP_USER:$APP_GROUP $APP_DIR/robots.txt
+    chmod 644 $APP_DIR/robots.txt
+}
+
+# Function to configure Apache2
+configure_apache() {
+    print_status "Configuring Apache2..."
+    
+    # Check if Apache2 is installed and running
+    if ! command -v httpd &> /dev/null; then
+        print_error "httpd (Apache2) is not installed. Please install it first with: dnf install httpd"
+        exit 1
+    fi
+    
+    # Enable required Apache modules
+    print_status "Enabling required Apache modules..."
+    
+    # Check if modules are available and enable them
+    REQUIRED_MODULES="ssl headers expires proxy proxy_http deflate"
+    
+    for module in $REQUIRED_MODULES; do
+        if httpd -M 2>/dev/null | grep -q "${module}_module"; then
+            print_status "Module $module is already loaded"
+        else
+            print_warning "Module $module may not be available. Please ensure it's installed and enabled."
+        fi
+    done
+    
+    # Copy Apache configuration
+    cp incident-reports-apache.conf /etc/httpd/conf.d/incident-reports.conf
+    
+    # Test Apache configuration
+    httpd -t
+    
+    if [ $? -eq 0 ]; then
+        print_status "Apache configuration is valid"
+        
+        # Restart Apache to load new configuration
+        systemctl reload httpd
+        
+        if systemctl is-active --quiet httpd; then
+            print_status "Apache reloaded successfully"
+        else
+            print_error "Failed to reload Apache"
+            systemctl status httpd
+            exit 1
+        fi
+    else
+        print_error "Apache configuration test failed"
+        exit 1
+    fi
+}
+
+# Function to configure SELinux for Apache2
+configure_selinux() {
+    print_status "Configuring SELinux for Apache2..."
+    
+    if command -v getenforce &> /dev/null && [ "$(getenforce)" != "Disabled" ]; then
+        print_status "SELinux is enabled, configuring policies..."
+        
+        # Allow Apache to connect to network (for proxy to gunicorn)
+        setsebool -P httpd_can_network_connect 1
+        
+        # Set proper SELinux contexts for application files
+        semanage fcontext -a -t httpd_exec_t "/opt/incident-reports(/.*)?" 2>/dev/null || true
+        restorecon -R /opt/incident-reports
+        
+        # Set proper SELinux contexts for log files
+        semanage fcontext -a -t httpd_log_t "/var/log/incident-reports(/.*)?" 2>/dev/null || true
+        restorecon -R /var/log/incident-reports
+        
+        # Set proper SELinux contexts for data files
+        semanage fcontext -a -t httpd_var_lib_t "/var/lib/incident-reports(/.*)?" 2>/dev/null || true
+        restorecon -R /var/lib/incident-reports
+        
+        print_status "SELinux policies configured"
+    else
+        print_status "SELinux is disabled or not available"
+    fi
+}
+
+# Function to setup firewall (updated for Apache2)
 setup_firewall() {
     print_status "Setting up firewall rules..."
     
@@ -243,8 +333,10 @@ setup_firewall() {
         firewall-cmd --permanent --add-port=8000/tcp
         firewall-cmd --reload
         print_status "Firewall rule added for port 8000"
+        print_status "Ports 80 and 443 should already be open for Apache2"
     else
         print_warning "No supported firewall found. Please manually configure firewall for port 8000"
+        print_warning "Ensure ports 80 and 443 are open for Apache2"
     fi
 }
 
@@ -294,17 +386,19 @@ start_service() {
     fi
 }
 
-# Function to display final information
+# Function to display final information (updated for Apache2)
 display_info() {
     echo ""
     echo "=========================================="
-    echo "🎉 Deployment completed successfully!"
+    echo "🎉 Deployment completed successfully with Apache2!"
     echo "=========================================="
     echo ""
     echo "Application Information:"
     echo "  - Service Name: incident-reports"
-    echo "  - Application URL: http://localhost:8000"
-    echo "  - Admin URL: http://localhost:8000/admin/login"
+    echo "  - Application URL: http://incidents.your-domain.com"
+    echo "  - Application URL: https://incidents.your-domain.com"
+    echo "  - Direct Application: http://localhost:8000 (gunicorn)"
+    echo "  - Admin URL: https://incidents.your-domain.com/admin/login"
     echo "  - Default Admin: admin / admin123"
     echo ""
     echo "Service Management:"
@@ -314,6 +408,16 @@ display_info() {
     echo "  - Status:  sudo systemctl status incident-reports"
     echo "  - Logs:    sudo journalctl -u incident-reports -f"
     echo ""
+    echo "Apache2 Management:"
+    echo "  - Test config: sudo httpd -t"
+    echo "  - Reload:      sudo systemctl reload httpd"
+    echo "  - Restart:     sudo systemctl restart httpd"
+    echo "  - Status:      sudo systemctl status httpd"
+    echo ""
+    echo "Configuration Files:"
+    echo "  - Apache VHost: /etc/httpd/conf.d/incident-reports.conf"
+    echo "  - Service File: /etc/systemd/system/incident-reports.service"
+    echo ""
     echo "Files and Directories:"
     echo "  - Application: $APP_DIR"
     echo "  - Logs: $LOG_DIR"
@@ -322,23 +426,28 @@ display_info() {
     echo ""
     echo "⚠️  IMPORTANT: Change the default admin password!"
     echo "⚠️  IMPORTANT: Update SECRET_KEY in the service file!"
+    echo "⚠️  IMPORTANT: Update SSL certificate paths in Apache config!"
+    echo "⚠️  IMPORTANT: Update ServerName in Apache config!"
     echo ""
 }
 
 # Main execution
 main() {
-    print_status "Starting deployment of Incident Reports Application..."
+    print_status "Starting deployment of Incident Reports Application with Apache2..."
     
     check_root
     check_systemd
     create_user
     create_directories
     copy_application
+    create_robots_txt
     setup_python_env
     create_service_file
     initialize_database
     verify_database
     setup_firewall
+    configure_selinux
+    configure_apache
     start_service
     display_info
 }

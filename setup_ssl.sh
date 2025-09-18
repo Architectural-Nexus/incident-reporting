@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # SSL Certificate Setup Script for Incident Reporting System
-# This script helps set up SSL certificates for the nginx configuration
+# This script helps set up SSL certificates for the Apache2 configuration
 
 set -e
 
@@ -37,12 +37,44 @@ check_root() {
     fi
 }
 
-# Function to install certbot
+# Function to check and enable required Apache modules
+check_apache_modules() {
+    print_info "Checking required Apache modules..."
+    
+    # Required modules for SSL
+    REQUIRED_MODULES="ssl headers expires proxy proxy_http deflate"
+    
+    for module in $REQUIRED_MODULES; do
+        if httpd -M 2>/dev/null | grep -q "${module}_module"; then
+            print_info "Module $module is loaded ✓"
+        else
+            print_warning "Module $module may not be available. Please ensure it's installed and enabled."
+        fi
+    done
+    
+    # Check if Apache configuration directory exists
+    if [ ! -d "/etc/httpd/conf.d" ]; then
+        print_error "Apache configuration directory /etc/httpd/conf.d not found"
+        print_error "Please ensure Apache (httpd) is properly installed"
+        return 1
+    fi
+    
+    # Check if our configuration file exists
+    if [ ! -f "/etc/httpd/conf.d/incident-reports.conf" ]; then
+        print_warning "Incident reports Apache configuration not found at /etc/httpd/conf.d/incident-reports.conf"
+        print_warning "Please run the deployment script first to create the Apache configuration"
+    fi
+}
+
+# Function to install certbot for AlmaLinux
 install_certbot() {
     print_info "Installing Certbot for Let's Encrypt certificates..."
     
-    apt update
-    apt install -y certbot python3-certbot-nginx
+    # Install EPEL repository if not already installed
+    dnf install -y epel-release
+    
+    # Install certbot and Apache plugin
+    dnf install -y certbot python3-certbot-apache
     
     print_success "Certbot installed successfully"
 }
@@ -53,8 +85,8 @@ setup_letsencrypt() {
     
     print_info "Setting up Let's Encrypt certificate for domain: $domain"
     
-    # Stop nginx temporarily
-    systemctl stop nginx 2>/dev/null || true
+    # Stop Apache temporarily
+    systemctl stop httpd 2>/dev/null || true
     
     # Obtain certificate
     certbot certonly --standalone \
@@ -66,14 +98,17 @@ setup_letsencrypt() {
     if [ $? -eq 0 ]; then
         print_success "Let's Encrypt certificate obtained successfully"
         
-        # Update nginx configuration with correct certificate paths
-        sed -i "s|ssl_certificate /etc/ssl/certs/incident-reports.crt;|ssl_certificate /etc/letsencrypt/live/$domain/fullchain.pem;|g" /etc/nginx/sites-available/incident-reports
-        sed -i "s|ssl_certificate_key /etc/ssl/private/incident-reports.key;|ssl_certificate_key /etc/letsencrypt/live/$domain/privkey.pem;|g" /etc/nginx/sites-available/incident-reports
+        # Update Apache configuration with correct certificate paths
+        sed -i "s|SSLCertificateFile /etc/ssl/certs/incident-reports.crt|SSLCertificateFile /etc/letsencrypt/live/$domain/fullchain.pem|g" /etc/httpd/conf.d/incident-reports.conf
+        sed -i "s|SSLCertificateKeyFile /etc/ssl/private/incident-reports.key|SSLCertificateKeyFile /etc/letsencrypt/live/$domain/privkey.pem|g" /etc/httpd/conf.d/incident-reports.conf
         
         # Setup auto-renewal
         setup_auto_renewal
         
-        print_success "Certificate paths updated in nginx configuration"
+        # Configure SELinux
+        configure_selinux_ssl
+        
+        print_success "Certificate paths updated in Apache configuration"
     else
         print_error "Failed to obtain Let's Encrypt certificate"
         return 1
@@ -84,13 +119,14 @@ setup_letsencrypt() {
 setup_auto_renewal() {
     print_info "Setting up automatic certificate renewal..."
     
-    # Create renewal hook to reload nginx
-    cat > /etc/letsencrypt/renewal-hooks/deploy/nginx-reload.sh << 'EOF'
+    # Create renewal hook to reload Apache
+    mkdir -p /etc/letsencrypt/renewal-hooks/deploy
+    cat > /etc/letsencrypt/renewal-hooks/deploy/httpd-reload.sh << 'EOF'
 #!/bin/bash
-systemctl reload nginx
+systemctl reload httpd
 EOF
     
-    chmod +x /etc/letsencrypt/renewal-hooks/deploy/nginx-reload.sh
+    chmod +x /etc/letsencrypt/renewal-hooks/deploy/httpd-reload.sh
     
     # Test auto-renewal
     certbot renew --dry-run
@@ -124,48 +160,51 @@ create_self_signed() {
     chmod 600 /etc/ssl/private/incident-reports.key
     chmod 644 /etc/ssl/certs/incident-reports.crt
     
+    # Configure SELinux
+    configure_selinux_ssl
+    
     print_success "Self-signed certificate created successfully"
     print_warning "Self-signed certificates are not trusted by browsers by default"
 }
 
-# Function to update nginx configuration with domain
-update_nginx_domain() {
+# Function to update Apache configuration with domain
+update_apache_domain() {
     local domain=$1
     
-    print_info "Updating nginx configuration with domain: $domain"
+    print_info "Updating Apache configuration with domain: $domain"
     
-    # Update server_name in nginx configuration
-    sed -i "s/your-domain.com/$domain/g" /etc/nginx/sites-available/incident-reports
+    # Update ServerName in Apache configuration
+    sed -i "s/incidents.your-domain.com/$domain/g" /etc/httpd/conf.d/incident-reports.conf
     
-    print_success "Nginx configuration updated with domain: $domain"
+    print_success "Apache configuration updated with domain: $domain"
 }
 
-# Function to test nginx configuration
-test_nginx() {
-    print_info "Testing nginx configuration..."
+# Function to test Apache configuration
+test_apache() {
+    print_info "Testing Apache configuration..."
     
-    nginx -t
+    httpd -t
     
     if [ $? -eq 0 ]; then
-        print_success "Nginx configuration is valid"
+        print_success "Apache configuration is valid"
         return 0
     else
-        print_error "Nginx configuration has errors"
+        print_error "Apache configuration has errors"
         return 1
     fi
 }
 
-# Function to enable and start nginx
-start_nginx() {
-    print_info "Starting nginx service..."
+# Function to enable and start Apache
+start_apache() {
+    print_info "Starting Apache service..."
     
-    systemctl enable nginx
-    systemctl start nginx
+    systemctl enable httpd
+    systemctl start httpd
     
-    if systemctl is-active --quiet nginx; then
-        print_success "Nginx service started successfully"
+    if systemctl is-active --quiet httpd; then
+        print_success "Apache service started successfully"
     else
-        print_error "Failed to start nginx service"
+        print_error "Failed to start Apache service"
         return 1
     fi
 }
@@ -238,18 +277,18 @@ install_enterprise_cert() {
         cat /etc/ssl/certs/incident-reports.crt "$CHAIN_PATH" > /etc/ssl/certs/incident-reports-fullchain.crt
         chmod 644 /etc/ssl/certs/incident-reports-fullchain.crt
         
-        # Update nginx config to use full chain
-        sed -i "s|ssl_certificate /etc/ssl/certs/incident-reports.crt;|ssl_certificate /etc/ssl/certs/incident-reports-fullchain.crt;|g" /etc/nginx/sites-available/incident-reports
-        print_success "Certificate chain installed and nginx updated to use full chain"
+        # Update Apache config to use full chain
+        sed -i "s|SSLCertificateFile /etc/ssl/certs/incident-reports.crt|SSLCertificateFile /etc/ssl/certs/incident-reports-fullchain.crt|g" /etc/httpd/conf.d/incident-reports.conf
+        print_success "Certificate chain installed and Apache updated to use full chain"
     else
         print_warning "No certificate chain provided - browsers may show untrusted warnings"
     fi
     
-    # Handle root CA certificate
+        # Handle root CA certificate for AlmaLinux
     if [ -n "$CA_PATH" ]; then
         print_info "Installing root CA certificate for system trust..."
-        cp "$CA_PATH" /usr/local/share/ca-certificates/incident-reports-ca.crt
-        update-ca-certificates
+        cp "$CA_PATH" /etc/pki/ca-trust/source/anchors/incident-reports-ca.crt
+        update-ca-trust
         print_success "Root CA certificate installed in system trust store"
     fi
     
@@ -269,7 +308,28 @@ install_enterprise_cert() {
     print_info "Certificate Information:"
     openssl x509 -in /etc/ssl/certs/incident-reports.crt -noout -subject -issuer -dates
     
+    # Configure SELinux
+    configure_selinux_ssl
+    
     print_success "Enterprise certificate installation completed"
+}
+
+# Function to configure SELinux for SSL certificates
+configure_selinux_ssl() {
+    print_info "Configuring SELinux for SSL certificates..."
+    
+    if command -v getenforce &> /dev/null && [ "$(getenforce)" != "Disabled" ]; then
+        print_info "SELinux is enabled, setting certificate contexts..."
+        
+        # Set proper SELinux contexts for SSL certificates
+        restorecon -R /etc/ssl/certs/ 2>/dev/null || true
+        restorecon -R /etc/ssl/private/ 2>/dev/null || true
+        restorecon -R /etc/letsencrypt/ 2>/dev/null || true
+        
+        print_success "SELinux contexts configured for SSL certificates"
+    else
+        print_info "SELinux is disabled or not available"
+    fi
 }
 
 # Function to create certificate signing request (CSR)
@@ -338,8 +398,8 @@ show_menu() {
     echo "2. Install enterprise/internal CA certificate"
     echo "3. Create Certificate Signing Request (CSR) for CA"
     echo "4. Create self-signed certificate (testing only)"
-    echo "5. Update domain in nginx configuration only"
-    echo "6. Test nginx configuration"
+    echo "5. Update domain in Apache configuration only"
+    echo "6. Test Apache configuration"
     echo "7. View current certificate information"
     echo "8. Exit"
     echo ""
@@ -388,6 +448,7 @@ view_certificate_info() {
 # Main execution
 main() {
     check_root
+    check_apache_modules
     
     # Get domain name for most operations
     echo "Enter your domain name (e.g., incident-reports.yourcompany.com):"
@@ -405,47 +466,47 @@ main() {
         case $choice in
             1)
                 install_certbot
-                update_nginx_domain "$DOMAIN"
+                update_apache_domain "$DOMAIN"
                 setup_letsencrypt "$DOMAIN"
-                if test_nginx; then
-                    start_nginx
+                if test_apache; then
+                    start_apache
                     print_success "SSL setup completed! Your site should be available at https://$DOMAIN"
                 fi
                 break
                 ;;
             2)
-                update_nginx_domain "$DOMAIN"
+                update_apache_domain "$DOMAIN"
                 install_enterprise_cert "$DOMAIN"
-                if test_nginx; then
-                    start_nginx
+                if test_apache; then
+                    start_apache
                     print_success "Enterprise SSL setup completed! Your site should be available at https://$DOMAIN"
                 fi
                 break
                 ;;
             3)
-                update_nginx_domain "$DOMAIN"
+                update_apache_domain "$DOMAIN"
                 create_csr "$DOMAIN"
                 print_info "CSR created. Install the signed certificate using option 2 when ready."
                 break
                 ;;
             4)
-                update_nginx_domain "$DOMAIN"
+                update_apache_domain "$DOMAIN"
                 create_self_signed "$DOMAIN"
-                if test_nginx; then
-                    start_nginx
+                if test_apache; then
+                    start_apache
                     print_success "Self-signed SSL setup completed! Your site should be available at https://$DOMAIN"
                     print_warning "Remember to accept the certificate warning in your browser"
                 fi
                 break
                 ;;
             5)
-                update_nginx_domain "$DOMAIN"
-                print_success "Domain updated in nginx configuration"
+                update_apache_domain "$DOMAIN"
+                print_success "Domain updated in Apache configuration"
                 print_info "You still need to setup SSL certificates manually"
                 break
                 ;;
             6)
-                test_nginx
+                test_apache
                 break
                 ;;
             7)
