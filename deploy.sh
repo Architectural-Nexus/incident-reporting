@@ -159,8 +159,36 @@ setup_python_env() {
     
     # Activate virtual environment and install dependencies
     source $VENV_DIR/bin/activate
+    
+    print_status "Virtual environment activated, upgrading pip..."
     pip install --upgrade pip
+    
+    if [ $? -ne 0 ]; then
+        print_error "Failed to upgrade pip"
+        exit 1
+    fi
+    
+    print_status "Installing requirements from requirements.txt..."
     pip install -r requirements.txt
+    
+    if [ $? -ne 0 ]; then
+        print_error "Failed to install requirements"
+        print_status "Checking if requirements.txt exists..."
+        if [ ! -f "requirements.txt" ]; then
+            print_error "requirements.txt not found in $APP_DIR"
+        else
+            print_status "requirements.txt found, contents:"
+            cat requirements.txt
+        fi
+        exit 1
+    fi
+    
+    print_status "Verifying Flask installation..."
+    if python -c "import flask; print(f'Flask {flask.__version__} installed successfully')" 2>/dev/null; then
+        print_status "Flask installation verified"
+    else
+        print_warning "Flask verification failed, but continuing..."
+    fi
     
     # Set ownership
     chown -R $APP_USER:$APP_GROUP $VENV_DIR
@@ -214,7 +242,34 @@ initialize_database() {
     chmod 755 $DATA_DIR
     
     cd $APP_DIR
+    
+    # Check if virtual environment was created successfully
+    if [ ! -f "$VENV_DIR/bin/activate" ]; then
+        print_error "Virtual environment not found at $VENV_DIR"
+        print_error "Please check the Python environment setup step above"
+        exit 1
+    fi
+    
+    # Activate virtual environment and check if Flask is installed
     source $VENV_DIR/bin/activate
+    
+    # Verify Flask installation
+    if ! python -c "import flask" 2>/dev/null; then
+        print_error "Flask is not installed in the virtual environment"
+        print_status "Attempting to reinstall dependencies..."
+        
+        # Try to reinstall dependencies
+        pip install --upgrade pip
+        pip install -r requirements.txt
+        
+        # Check again
+        if ! python -c "import flask" 2>/dev/null; then
+            print_error "Failed to install Flask. Please check requirements.txt and internet connectivity"
+            exit 1
+        fi
+    fi
+    
+    print_status "Flask is available, proceeding with database initialization..."
     
     # Set environment variable for database location
     export DATABASE_URL="sqlite:///$DATA_DIR/incidents.db"
@@ -226,6 +281,11 @@ with app.app_context():
     db.create_all()
     print('Database initialized successfully')
 "
+    
+    if [ $? -ne 0 ]; then
+        print_error "Database initialization failed"
+        exit 1
+    fi
     
     # Create default admin user
     python -c "
@@ -242,6 +302,11 @@ with app.app_context():
     else:
         print('Admin user already exists')
 "
+    
+    if [ $? -ne 0 ]; then
+        print_error "Admin user creation failed"
+        exit 1
+    fi
     
     # Set ownership of database file if it exists
     if [ -f "$DATA_DIR/incidents.db" ]; then
