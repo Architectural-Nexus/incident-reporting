@@ -17,9 +17,10 @@ A Flask-based web application for reporting and managing incidents within an org
 - Python 3.8+
 - Flask 2.3.3+
 - SQLite (default) or PostgreSQL/MySQL
-- Nginx (for production)
+- Apache2/httpd (for production)
 - Gunicorn (for production)
 - SystemD (for service management)
+- AlmaLinux 8+ (recommended for production)
 
 ## Installation
 
@@ -109,9 +110,192 @@ For a simple production deployment, use the provided deployment scripts:
 
 For detailed instructions, see [README-NoDocker.md](README-NoDocker.md)
 
-### Manual Production Setup
+### AlmaLinux Production Setup (Recommended)
 
-#### Ubuntu Server Setup
+#### Automated Deployment
+
+The easiest way to deploy on AlmaLinux is using the provided deployment script:
+
+```bash
+# Clone the repository
+git clone <repository-url>
+cd incident-reporting
+
+# Make the deployment script executable
+sudo chmod +x deploy.sh
+
+# Run the automated deployment
+sudo ./deploy.sh
+```
+
+The deployment script will:
+- Create dedicated user and group (`incident-reports`)
+- Install and configure the application in `/opt/incident-reports`
+- Set up Apache2 virtual host configuration
+- Configure systemd service for automatic startup
+- Set up proper file permissions and SELinux contexts
+- Create log directories with proper permissions
+- Initialize the database with default admin user
+
+After deployment:
+- **Application URL**: `https://incidents.your-domain.com`
+- **Admin Panel**: `https://incidents.your-domain.com/admin/login`
+- **Default Admin**: `admin` / `admin123`
+
+#### Manual AlmaLinux Setup
+
+If you prefer manual installation or need to customize the setup:
+
+1. **Install System Dependencies**
+
+```bash
+# Update system packages
+sudo dnf update -y
+
+# Install required packages
+sudo dnf install -y python3 python3-pip python3-venv httpd mod_ssl
+sudo dnf install -y gcc python3-devel  # For building Python packages
+
+# Enable and start Apache
+sudo systemctl enable httpd
+sudo systemctl start httpd
+```
+
+2. **Configure Firewall**
+
+```bash
+# Open HTTP and HTTPS ports
+sudo firewall-cmd --permanent --add-service=http
+sudo firewall-cmd --permanent --add-service=https
+sudo firewall-cmd --reload
+
+# Verify firewall status
+sudo firewall-cmd --list-all
+```
+
+3. **Create Application User and Directories**
+
+```bash
+# Create dedicated user
+sudo groupadd incident-reports
+sudo useradd -r -g incident-reports -s /bin/false -d /opt/incident-reports incident-reports
+
+# Create directories
+sudo mkdir -p /opt/incident-reports
+sudo mkdir -p /var/log/incident-reports
+sudo mkdir -p /var/lib/incident-reports
+sudo mkdir -p /var/run/incident-reports
+
+# Set ownership
+sudo chown -R incident-reports:incident-reports /opt/incident-reports
+sudo chown -R incident-reports:incident-reports /var/log/incident-reports
+sudo chown -R incident-reports:incident-reports /var/lib/incident-reports
+sudo chown -R incident-reports:incident-reports /var/run/incident-reports
+```
+
+4. **Deploy Application**
+
+```bash
+# Copy application files
+sudo cp -r * /opt/incident-reports/
+sudo chown -R incident-reports:incident-reports /opt/incident-reports
+```
+
+5. **Set Up Python Environment**
+
+```bash
+cd /opt/incident-reports
+sudo -u incident-reports python3 -m venv venv
+sudo -u incident-reports venv/bin/pip install --upgrade pip
+sudo -u incident-reports venv/bin/pip install -r requirements.txt
+```
+
+6. **Configure Environment**
+
+```bash
+sudo -u incident-reports cp env.example .env
+# Edit .env with production settings
+sudo nano .env
+```
+
+7. **Initialize Database**
+
+```bash
+cd /opt/incident-reports
+sudo -u incident-reports venv/bin/python -c "
+from app import app, db
+with app.app_context():
+    db.create_all()
+    print('Database initialized')
+"
+
+# Create default admin user
+sudo -u incident-reports venv/bin/python -c "
+from app import app, db, User
+with app.app_context():
+    admin = User(username='admin')
+    admin.set_password('admin123')
+    db.session.add(admin)
+    db.session.commit()
+    print('Admin user created: admin/admin123')
+"
+```
+
+8. **Configure SystemD Service**
+
+```bash
+# Copy and edit systemd service file
+sudo cp incident-reports.service /etc/systemd/system/
+sudo nano /etc/systemd/system/incident-reports.service
+# Verify paths are correct
+
+# Enable and start service
+sudo systemctl daemon-reload
+sudo systemctl enable incident-reports
+sudo systemctl start incident-reports
+
+# Check service status
+sudo systemctl status incident-reports
+```
+
+9. **Configure Apache2**
+
+```bash
+# Copy Apache configuration
+sudo cp incident-reports-apache.conf /etc/httpd/conf.d/incident-reports.conf
+
+# Edit configuration file
+sudo nano /etc/httpd/conf.d/incident-reports.conf
+# Update ServerName with your domain name
+# Update SSL certificate paths if using SSL
+
+# Test Apache configuration
+sudo httpd -t
+
+# Restart Apache to load new configuration
+sudo systemctl restart httpd
+```
+
+10. **Configure SELinux**
+
+```bash
+# Allow Apache to connect to network (for proxy to Gunicorn)
+sudo setsebool -P httpd_can_network_connect 1
+
+# Set proper SELinux contexts
+sudo semanage fcontext -a -t httpd_exec_t "/opt/incident-reports(/.*)?"
+sudo restorecon -R /opt/incident-reports
+
+sudo semanage fcontext -a -t httpd_log_t "/var/log/incident-reports(/.*)?"
+sudo restorecon -R /var/log/incident-reports
+
+sudo semanage fcontext -a -t httpd_var_lib_t "/var/lib/incident-reports(/.*)?"
+sudo restorecon -R /var/lib/incident-reports
+```
+
+### Ubuntu Server Setup (Alternative)
+
+For Ubuntu/Debian systems, you can still use nginx:
 
 1. **Install System Dependencies**
 
@@ -198,7 +382,7 @@ sudo ufw enable
 
 ### SSL/HTTPS Setup
 
-For production deployments, SSL/HTTPS is strongly recommended. The nginx configuration is pre-configured for SSL with modern security settings.
+For production deployments, SSL/HTTPS is strongly recommended. The Apache2 configuration is pre-configured for SSL with modern security settings.
 
 #### Option 1: Let's Encrypt (Recommended)
 
@@ -213,11 +397,12 @@ sudo ./setup_ssl.sh
 ```
 
 The script will:
-- Install Certbot
+- Install Certbot with Apache2 plugin for AlmaLinux
 - Obtain Let's Encrypt certificates
-- Update nginx configuration with certificate paths
+- Update Apache2 configuration with certificate paths
 - Setup automatic certificate renewal
 - Configure HTTPS redirects
+- Set proper SELinux contexts for certificates
 
 #### Option 2: Enterprise/Internal CA Certificates
 
@@ -232,11 +417,12 @@ sudo ./setup_ssl.sh
 The script will guide you through:
 - Installing your server certificate and private key
 - Setting up certificate chains (intermediate certificates)
-- Installing root CA certificates for system trust
+- Installing root CA certificates for system trust (AlmaLinux-compatible)
 - Validating certificate and key compatibility
-- Automatic nginx configuration
+- Automatic Apache2 configuration
+- SELinux context configuration
 
-**Manual Setup:**
+**Manual Setup for AlmaLinux:**
 ```bash
 # Copy certificates
 sudo cp your-certificate.crt /etc/ssl/certs/incident-reports.crt
@@ -250,13 +436,17 @@ sudo cat /etc/ssl/certs/incident-reports.crt /etc/ssl/certs/incident-reports-cha
 sudo chmod 644 /etc/ssl/certs/incident-reports*.crt
 sudo chmod 600 /etc/ssl/private/incident-reports.key
 
-# Update nginx configuration
-sudo nano /etc/nginx/sites-available/incident-reports
-# Change: ssl_certificate /etc/ssl/certs/incident-reports-fullchain.crt;
+# Update Apache configuration
+sudo nano /etc/httpd/conf.d/incident-reports.conf
+# Change: SSLCertificateFile /etc/ssl/certs/incident-reports-fullchain.crt
 
-# Test and reload
-sudo nginx -t
-sudo systemctl reload nginx
+# Configure SELinux contexts
+sudo restorecon -R /etc/ssl/certs/
+sudo restorecon -R /etc/ssl/private/
+
+# Test and reload Apache
+sudo httpd -t
+sudo systemctl reload httpd
 ```
 
 #### Option 3: Certificate Signing Request (CSR)
@@ -284,6 +474,33 @@ sudo ./setup_ssl.sh
 ```
 
 **Note**: Self-signed certificates will show security warnings in browsers.
+
+#### SSL Certificate Management
+
+**Check Certificate Status:**
+```bash
+# View current certificate information
+sudo ./setup_ssl.sh
+# Select option 7 to view certificate details
+
+# Check certificate expiration
+openssl x509 -in /etc/ssl/certs/incident-reports.crt -noout -dates
+
+# Test SSL configuration
+openssl s_client -connect your-domain.com:443 -servername your-domain.com
+```
+
+**Renew Let's Encrypt Certificates:**
+```bash
+# Test renewal (dry run)
+sudo certbot renew --dry-run
+
+# Renew certificates
+sudo certbot renew
+
+# Auto-renewal is configured via systemd timer
+sudo systemctl status certbot.timer
+```
 
 ## Usage
 
@@ -358,23 +575,87 @@ flask reset-default-admin
 ## Logging
 
 The application logs to:
-- `incident_reports.log`: Application logs
-- `/var/log/gunicorn/`: Gunicorn logs (production)
-- `/var/log/nginx/`: Nginx logs (production)
+- `incident_reports.log`: Application logs (development)
+- `/var/log/incident-reports/`: Application logs (production)
+- `/var/log/httpd/`: Apache2 logs (AlmaLinux production)
+- `/var/log/nginx/`: Nginx logs (Ubuntu production)
 
 ## Troubleshooting
 
 ### Common Issues
 
+#### AlmaLinux/Apache2 Specific
+
+1. **SELinux Issues**: If you get permission denied errors:
+   ```bash
+   # Check SELinux status
+   sudo getenforce
+   
+   # View SELinux denials
+   sudo ausearch -m AVC -ts recent
+   
+   # Allow Apache network connections
+   sudo setsebool -P httpd_can_network_connect 1
+   
+   # Reset SELinux contexts
+   sudo restorecon -R /opt/incident-reports
+   ```
+
+2. **Firewall Issues**: Ensure ports are open:
+   ```bash
+   # Check firewall status
+   sudo firewall-cmd --list-all
+   
+   # Open required ports
+   sudo firewall-cmd --permanent --add-service=http
+   sudo firewall-cmd --permanent --add-service=https
+   sudo firewall-cmd --reload
+   ```
+
+3. **Apache Module Issues**: Ensure required modules are loaded:
+   ```bash
+   # Check loaded modules
+   sudo httpd -M | grep -E "(ssl|proxy|headers)"
+   
+   # If modules are missing, they may need to be installed
+   sudo dnf install mod_ssl mod_proxy_html
+   ```
+
+4. **Database Permission Issues**: Fix database file permissions:
+   ```bash
+   sudo chown incident-reports:incident-reports /var/lib/incident-reports/incidents.db
+   sudo chmod 644 /var/lib/incident-reports/incidents.db
+   sudo restorecon /var/lib/incident-reports/incidents.db
+   ```
+
+#### General Issues
+
 1. **Database Errors**: Ensure the database file is writable
 2. **Permission Errors**: Check file permissions and ownership
-3. **Port Conflicts**: Ensure port 5000 (development) or 80 (production) is available
+3. **Port Conflicts**: Ensure port 8000 (application) is available
 4. **Import Errors**: Verify all dependencies are installed
 
 ### Logs
 
 Check logs for detailed error information:
 
+#### AlmaLinux/Apache2 Production
+```bash
+# Application logs
+sudo tail -f /var/log/incident-reports/error.log
+
+# Gunicorn logs (systemd service)
+sudo journalctl -u incident-reports -f
+
+# Apache logs
+sudo tail -f /var/log/httpd/incident_reports_error.log
+sudo tail -f /var/log/httpd/incident_reports_access.log
+
+# System logs
+sudo journalctl -xe
+```
+
+#### Ubuntu/Nginx Production
 ```bash
 # Application logs
 tail -f incident_reports.log
@@ -384,6 +665,116 @@ sudo journalctl -u incident-reports -f
 
 # Nginx logs (production)
 sudo tail -f /var/log/nginx/incident_reports_error.log
+```
+
+#### Development
+```bash
+# Application logs
+tail -f incident_reports.log
+
+# Flask development server output
+python app.py
+```
+
+### Service Management
+
+#### AlmaLinux Commands
+```bash
+# Check service status
+sudo systemctl status incident-reports
+sudo systemctl status httpd
+
+# Restart services
+sudo systemctl restart incident-reports
+sudo systemctl restart httpd
+
+# View service logs
+sudo journalctl -u incident-reports --no-pager
+sudo journalctl -u httpd --no-pager
+
+# Test Apache configuration
+sudo httpd -t
+```
+
+### Performance Tuning
+
+#### For High Traffic Environments
+
+1. **Increase Gunicorn Workers**:
+   ```bash
+   sudo nano /etc/systemd/system/incident-reports.service
+   # Modify ExecStart to include more workers:
+   # --workers 4 --worker-class gevent
+   ```
+
+2. **Apache Tuning**:
+   ```bash
+   sudo nano /etc/httpd/conf.d/incident-reports.conf
+   # Add performance directives:
+   # KeepAlive On
+   # MaxKeepAliveRequests 100
+   # KeepAliveTimeout 5
+   ```
+
+3. **Database Optimization**:
+   ```bash
+   # For SQLite, consider moving to PostgreSQL for high traffic
+   # Update DATABASE_URL in service file
+   ```
+
+## Quick Reference
+
+### AlmaLinux Production Deployment
+
+```bash
+# 1. Clone and deploy
+git clone <repository-url>
+cd incident-reporting
+sudo chmod +x deploy.sh
+sudo ./deploy.sh
+
+# 2. Configure domain and SSL
+sudo nano /etc/httpd/conf.d/incident-reports.conf
+# Update ServerName to your domain
+
+sudo chmod +x setup_ssl.sh
+sudo ./setup_ssl.sh
+# Follow prompts for SSL setup
+
+# 3. Access application
+# https://your-domain.com
+# https://your-domain.com/admin/login
+# admin/admin123 (change this!)
+```
+
+### Service Management Commands
+
+```bash
+# Application service
+sudo systemctl {start|stop|restart|status} incident-reports
+
+# Apache service
+sudo systemctl {start|stop|restart|status} httpd
+
+# View logs
+sudo journalctl -u incident-reports -f
+sudo tail -f /var/log/httpd/incident_reports_error.log
+
+# Test configurations
+sudo httpd -t
+```
+
+### File Locations
+
+```
+/opt/incident-reports/                 # Application files
+/etc/httpd/conf.d/incident-reports.conf  # Apache config
+/etc/systemd/system/incident-reports.service  # Service config
+/var/log/incident-reports/            # Application logs
+/var/log/httpd/incident_reports_*.log  # Apache logs
+/var/lib/incident-reports/incidents.db # Database
+/etc/ssl/certs/incident-reports.crt   # SSL certificate
+/etc/ssl/private/incident-reports.key # SSL private key
 ```
 
 ## Contributing
