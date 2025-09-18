@@ -121,30 +121,62 @@ setup_python_env() {
     
     # Check for Python 3.12 first, then fallback to python3
     PYTHON_CMD=""
+    
+    print_status "Searching for compatible Python version..."
+    
+    # First check what's available
+    print_status "Available Python versions:"
+    ls -la /usr/bin/python* 2>/dev/null || true
+    ls -la /usr/local/bin/python* 2>/dev/null || true
+    
     if command -v python3.12 &> /dev/null; then
+        PYTHON_VERSION=$(python3.12 -c "import sys; print('.'.join(map(str, sys.version_info[:3])))")
         PYTHON_CMD="python3.12"
         PIP_CMD="pip3.12"
-        print_status "Using Python 3.12"
+        print_status "Using Python 3.12: $PYTHON_VERSION"
     elif command -v /usr/local/bin/python3.12 &> /dev/null; then
+        PYTHON_VERSION=$(/usr/local/bin/python3.12 -c "import sys; print('.'.join(map(str, sys.version_info[:3])))")
         PYTHON_CMD="/usr/local/bin/python3.12"
         PIP_CMD="/usr/local/bin/pip3.12"
-        print_status "Using Python 3.12 from /usr/local/bin"
-    elif command -v python3 &> /dev/null; then
-        # Check if python3 version is at least 3.8
-        PYTHON_VERSION=$(python3 -c "import sys; print('.'.join(map(str, sys.version_info[:2])))")
-        if python3 -c "import sys; exit(0 if sys.version_info >= (3, 8) else 1)"; then
-            PYTHON_CMD="python3"
-            PIP_CMD="pip3"
-            print_status "Using Python $PYTHON_VERSION"
-        else
-            print_error "Python version $PYTHON_VERSION is too old. This application requires Python 3.8 or higher."
-            print_error "Please install Python 3.12 using: sudo dnf install python3.12 python3.12-pip"
+        print_status "Using Python 3.12 from /usr/local/bin: $PYTHON_VERSION"
+    else
+        # Python 3.12 not found, check for other compatible versions
+        for py_version in python3.11 python3.10 python3.9 python3.8; do
+            if command -v $py_version &> /dev/null; then
+                PYTHON_VERSION=$($py_version -c "import sys; print('.'.join(map(str, sys.version_info[:3])))")
+                PYTHON_CMD="$py_version"
+                PIP_CMD="pip3"
+                print_status "Using $py_version: $PYTHON_VERSION"
+                break
+            fi
+        done
+        
+        # If still no compatible Python found, check system python3
+        if [ -z "$PYTHON_CMD" ] && command -v python3 &> /dev/null; then
+            PYTHON_VERSION=$(python3 -c "import sys; print('.'.join(map(str, sys.version_info[:3])))")
+            if python3 -c "import sys; exit(0 if sys.version_info >= (3, 8) else 1)" 2>/dev/null; then
+                PYTHON_CMD="python3"
+                PIP_CMD="pip3"
+                print_status "Using system Python 3: $PYTHON_VERSION"
+            else
+                print_error "System Python version $PYTHON_VERSION is too old."
+                print_error "This application requires Python 3.8 or higher."
+                print_error ""
+                print_error "Please install Python 3.12:"
+                print_error "  sudo dnf install -y epel-release"
+                print_error "  sudo dnf install -y python3.12 python3.12-pip python3.12-devel"
+                print_error ""
+                print_error "Or compile from source:"
+                print_error "  # See README.md for detailed instructions"
+                exit 1
+            fi
+        fi
+        
+        if [ -z "$PYTHON_CMD" ]; then
+            print_error "No compatible Python version found."
+            print_error "Please install Python 3.8 or higher."
             exit 1
         fi
-    else
-        print_error "Python 3 is not installed. Please install Python 3.12."
-        print_error "Run: sudo dnf install python3.12 python3.12-pip python3.12-devel"
-        exit 1
     fi
     
     # Check if pip is available
