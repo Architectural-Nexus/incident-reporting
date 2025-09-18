@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Incident Reports Application Deployment Script
-# This script sets up the application to run as a system service without Docker
+# This script sets up the application to run as a system service
 
 set -e
 
@@ -109,12 +109,7 @@ copy_application() {
     
     # Remove deployment files from app directory
     rm -f $APP_DIR/deploy.sh
-    rm -f $APP_DIR/docker-compose.yml
-    rm -f $APP_DIR/docker-compose.prod.yml
-    rm -f $APP_DIR/Dockerfile
-    rm -f $APP_DIR/docker-entrypoint.sh
     rm -f $APP_DIR/nginx.conf
-    rm -f $APP_DIR/.dockerignore
     
     # Set ownership
     chown -R $APP_USER:$APP_GROUP $APP_DIR

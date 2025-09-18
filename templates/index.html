@@ -7,33 +7,162 @@
     <h1 style="margin-bottom: 1.5rem; color: var(--text-primary);">Report an Incident</h1>
     
     <form id="incidentForm">
-        <div class="form-group">
-            <label for="reporter_name" class="form-label">Your Name</label>
-            <input type="text" id="reporter_name" name="reporter_name" class="form-input" 
-                   placeholder="Anonymous (leave blank to remain anonymous)">
+        <!-- Reporter Information Section -->
+        <div style="margin-bottom: 2rem; padding: 1.5rem; background-color: var(--background-color); border-radius: 0.5rem; border: 1px solid var(--border-color);">
+            <h3 style="margin-bottom: 1rem; color: var(--text-primary); font-size: 1.1rem;">Reporter Information (Optional)</h3>
+            <p style="margin-bottom: 1.5rem; color: var(--text-secondary); font-size: 0.875rem;">
+                You may remain anonymous by leaving these fields blank. Providing contact information may help with follow-up if needed.
+            </p>
+            
+            <div class="form-group">
+                <label for="reporter_name" class="form-label">Your Name</label>
+                <input type="text" id="reporter_name" name="reporter_name" class="form-input" 
+                       placeholder="Leave blank to remain anonymous">
+            </div>
+
+            <div class="form-group">
+                <label for="reporter_job_title" class="form-label">Job Title</label>
+                <input type="text" id="reporter_job_title" name="reporter_job_title" class="form-input" 
+                       placeholder="e.g., Project Manager, Engineer, Security Guard">
+            </div>
+
+            <div class="form-group">
+                <label for="reporter_email" class="form-label">Email Address</label>
+                <input type="email" id="reporter_email" name="reporter_email" class="form-input" 
+                       placeholder="your.email@company.com">
+            </div>
+
+            <div class="form-group">
+                <label for="reporter_phone" class="form-label">Phone Number</label>
+                <input type="tel" id="reporter_phone" name="reporter_phone" class="form-input" 
+                       placeholder="(555) 123-4567">
+            </div>
         </div>
 
-        <div class="form-group">
-            <label for="incident_datetime" class="form-label">Time and Date of Incident <span style="color: var(--danger-color);">*</span></label>
-            <input type="datetime-local" id="incident_datetime" name="incident_datetime" class="form-input" required>
+        <!-- Incident Details Section -->
+        <div style="margin-bottom: 2rem; padding: 1.5rem; background-color: var(--background-color); border-radius: 0.5rem; border: 1px solid var(--border-color);">
+            <h3 style="margin-bottom: 1rem; color: var(--text-primary); font-size: 1.1rem;">Incident Details</h3>
+            
+            <div class="form-group">
+                <label for="incident_datetime" class="form-label">Time and Date of Incident <span style="color: var(--danger-color);">*</span></label>
+                <input type="datetime-local" id="incident_datetime" name="incident_datetime" class="form-input" required>
+            </div>
+
+            <div class="form-group">
+                <label for="incident_type" class="form-label">Type of Incident <span style="color: var(--danger-color);">*</span></label>
+                <select id="incident_type" name="incident_type" class="form-input" required>
+                    <option value="">Select incident type...</option>
+                    <option value="Type 1 – Criminal Intent">Type 1 – Criminal Intent</option>
+                    <option value="Type 2 – Customer / Client / Patient">Type 2 – Customer / Client / Patient</option>
+                    <option value="Type 3 – Worker-on-Worker">Type 3 – Worker-on-Worker</option>
+                    <option value="Type 4 – Personal Relationship">Type 4 – Personal Relationship</option>
+                </select>
+                
+                <!-- Incident Type Descriptions -->
+                <div style="margin-top: 1rem; padding: 1rem; background-color: var(--surface-color); border-radius: 0.5rem; border: 1px solid var(--border-color);">
+                    <h4 style="margin-bottom: 1rem; color: var(--text-primary); font-size: 0.9rem; font-weight: 600;">Incident Type Descriptions:</h4>
+                    
+                    <div class="incident-type-item" style="margin-bottom: 1rem; padding: 0.75rem; border-radius: 0.375rem; border: 1px solid var(--border-color); background-color: var(--background-color); transition: all 0.2s ease;">
+                        <div style="font-weight: 600; color: var(--primary-color); margin-bottom: 0.25rem;">Type 1 – Criminal Intent</div>
+                        <div style="font-size: 0.875rem; color: var(--text-secondary); line-height: 1.4;">
+                            Violence committed by someone who has no legitimate business at the worksite.<br>
+                            <em>Example: a robber, trespasser, or other outsider entering the workplace to commit a crime.</em>
+                        </div>
+                    </div>
+                    
+                    <div class="incident-type-item" style="margin-bottom: 1rem; padding: 0.75rem; border-radius: 0.375rem; border: 1px solid var(--border-color); background-color: var(--background-color); transition: all 0.2s ease;">
+                        <div style="font-weight: 600; color: var(--primary-color); margin-bottom: 0.25rem;">Type 2 – Customer / Client / Patient</div>
+                        <div style="font-size: 0.875rem; color: var(--text-secondary); line-height: 1.4;">
+                            Violence directed at employees by a recipient of the employer's services.<br>
+                            <em>Example: a patient in a hospital attacking a nurse, or a client yelling threats at a social worker.</em>
+                        </div>
+                    </div>
+                    
+                    <div class="incident-type-item" style="margin-bottom: 1rem; padding: 0.75rem; border-radius: 0.375rem; border: 1px solid var(--border-color); background-color: var(--background-color); transition: all 0.2s ease;">
+                        <div style="font-weight: 600; color: var(--primary-color); margin-bottom: 0.25rem;">Type 3 – Worker-on-Worker</div>
+                        <div style="font-size: 0.875rem; color: var(--text-secondary); line-height: 1.4;">
+                            Violence between current or former employees, supervisors, or managers.<br>
+                            <em>Example: an employee threatening a coworker or a supervisor being assaulted by an employee.</em>
+                        </div>
+                    </div>
+                    
+                    <div class="incident-type-item" style="margin-bottom: 0; padding: 0.75rem; border-radius: 0.375rem; border: 1px solid var(--border-color); background-color: var(--background-color); transition: all 0.2s ease;">
+                        <div style="font-weight: 600; color: var(--primary-color); margin-bottom: 0.25rem;">Type 4 – Personal Relationship</div>
+                        <div style="font-size: 0.875rem; color: var(--text-secondary); line-height: 1.4;">
+                            Violence committed in the workplace by someone who has a personal relationship with an employee (but not with the employer).<br>
+                            <em>Example: a domestic partner, spouse, or relative coming to the workplace to harm an employee.</em>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="location" class="form-label">Location of Incident <span style="color: var(--danger-color);">*</span></label>
+                <input type="text" id="location" name="location" class="form-input" 
+                       placeholder="e.g., Building A, Room 101, Parking Lot" required>
+            </div>
+            <!-- Required Incident Information -->
+            <div class="form-group">
+                <label for="incident_description" class="form-label">Description of What Happened <span style="color: var(--danger-color);">*</span></label>
+                <textarea id="incident_description" name="incident_description" class="form-input form-textarea" 
+                          placeholder="Provide a detailed description of what happened and how it started" required></textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="persons_involved" class="form-label">Names and Identifiers of Those Involved <span style="color: var(--danger-color);">*</span></label>
+                <textarea id="persons_involved" name="persons_involved" class="form-input form-textarea" 
+                          placeholder="Names, job titles, or other identifiers of those involved (if known)" required></textarea>
+            </div>
         </div>
 
-        <div class="form-group">
-            <label for="location" class="form-label">Location of Incident <span style="color: var(--danger-color);">*</span></label>
-            <input type="text" id="location" name="location" class="form-input" 
-                   placeholder="e.g., Building A, Room 101, Parking Lot" required>
-        </div>
+        <!-- Additional Incident Details Section -->
+        <div style="margin-bottom: 2rem; padding: 1.5rem; background-color: var(--background-color); border-radius: 0.5rem; border: 1px solid var(--border-color);">
+            <h3 style="margin-bottom: 1rem; color: var(--text-primary); font-size: 1.1rem;">Additional Incident Details (Optional)</h3>
+            <p style="margin-bottom: 1.5rem; color: var(--text-secondary); font-size: 0.875rem;">
+                Please provide any additional information that may be relevant to the incident.
+            </p>
+            
+            <div class="form-group">
+                <label for="threats_weapons" class="form-label">Nature of Threats, Physical Acts, or Weapons Used</label>
+                <textarea id="threats_weapons" name="threats_weapons" class="form-input form-textarea" 
+                          placeholder="Describe any threats made, physical acts, or weapons used during the incident"></textarea>
+            </div>
 
-        <div class="form-group">
-            <label for="persons_involved" class="form-label">Names of Persons Involved in Incident <span style="color: var(--danger-color);">*</span></label>
-            <textarea id="persons_involved" name="persons_involved" class="form-input form-textarea" 
-                      placeholder="List all persons involved in the incident, including witnesses" required></textarea>
-        </div>
+            <div class="form-group">
+                <label for="medical_treatment" class="form-label">Medical Treatment</label>
+                <textarea id="medical_treatment" name="medical_treatment" class="form-input form-textarea" 
+                          placeholder="Was medical treatment needed? Describe what medical attention was provided"></textarea>
+            </div>
 
-        <div class="form-group">
-            <label for="description" class="form-label">Description of Incident <span style="color: var(--danger-color);">*</span></label>
-            <textarea id="description" name="description" class="form-input form-textarea" 
-                      placeholder="Provide a detailed description of what happened, including any relevant details" required></textarea>
+            <div class="form-group">
+                <label for="law_enforcement" class="form-label">Law Enforcement Contact</label>
+                <textarea id="law_enforcement" name="law_enforcement" class="form-input form-textarea" 
+                          placeholder="Was law enforcement contacted? Provide details of police involvement"></textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="security_intervention" class="form-label">Security or Other Intervention</label>
+                <textarea id="security_intervention" name="security_intervention" class="form-input form-textarea" 
+                          placeholder="Was security or other intervention required? Describe what actions were taken"></textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="incident_response" class="form-label">How the Incident Was Responded To</label>
+                <textarea id="incident_response" name="incident_response" class="form-input form-textarea" 
+                          placeholder="Describe any de-escalation, first aid, evacuation, or other response actions taken"></textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="contributing_factors" class="form-label">Contributing Factors</label>
+                <textarea id="contributing_factors" name="contributing_factors" class="form-input form-textarea" 
+                          placeholder="List any contributing factors (environmental, organizational, or procedural)"></textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="corrective_actions" class="form-label">Corrective Actions</label>
+                <textarea id="corrective_actions" name="corrective_actions" class="form-input form-textarea" 
+                          placeholder="Describe corrective actions taken or recommended to prevent recurrence"></textarea>
+            </div>
         </div>
 
         <div style="display: flex; gap: 1rem; margin-top: 2rem;">
@@ -51,6 +180,8 @@
 document.addEventListener('DOMContentLoaded', function() {
     const form = document.getElementById('incidentForm');
     const messageContainer = document.getElementById('messageContainer');
+    const incidentTypeSelect = document.getElementById('incident_type');
+    const incidentTypeDescription = document.getElementById('incidentTypeDescription');
     
     // Set default datetime to current time
     const now = new Date();
@@ -60,6 +191,41 @@ document.addEventListener('DOMContentLoaded', function() {
     const hours = String(now.getHours()).padStart(2, '0');
     const minutes = String(now.getMinutes()).padStart(2, '0');
     document.getElementById('incident_datetime').value = `${year}-${month}-${day}T${hours}:${minutes}`;
+    
+    // Incident type descriptions
+    const incidentTypeDescriptions = {
+        'Type 1 – Criminal Intent': 'Violence committed by someone who has no legitimate business at the worksite. Example: a robber, trespasser, or other outsider entering the workplace to commit a crime.',
+        'Type 2 – Customer / Client / Patient': 'Violence directed at employees by a recipient of the employer\'s services. Example: a patient in a hospital attacking a nurse, or a client yelling threats at a social worker.',
+        'Type 3 – Worker-on-Worker': 'Violence between current or former employees, supervisors, or managers. Example: an employee threatening a coworker or a supervisor being assaulted by an employee.',
+        'Type 4 – Personal Relationship': 'Violence committed in the workplace by someone who has a personal relationship with an employee (but not with the employer). Example: a domestic partner, spouse, or relative coming to the workplace to harm an employee.'
+    };
+    
+    // Handle incident type selection - highlight selected type
+    incidentTypeSelect.addEventListener('change', function() {
+        const selectedType = this.value;
+        
+        // Reset all incident type items to normal styling
+        const allTypeItems = document.querySelectorAll('.incident-type-item');
+        allTypeItems.forEach(item => {
+            item.style.border = '1px solid var(--border-color)';
+            item.style.backgroundColor = 'var(--background-color)';
+            item.style.transform = 'none';
+            item.style.boxShadow = 'none';
+        });
+        
+        // Highlight the selected type
+        if (selectedType) {
+            const typeNumber = selectedType.split(' ')[1]; // Extract "1", "2", "3", or "4"
+            const selectedItem = allTypeItems[parseInt(typeNumber) - 1];
+            if (selectedItem) {
+                selectedItem.style.border = '2px solid var(--primary-color)';
+                selectedItem.style.backgroundColor = 'var(--surface-color)';
+                selectedItem.style.transform = 'translateY(-2px)';
+                selectedItem.style.boxShadow = '0 4px 8px rgba(74, 168, 151, 0.15)';
+                selectedItem.style.transition = 'all 0.2s ease';
+            }
+        }
+    });
     
     function showMessage(message, type) {
         messageContainer.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
@@ -105,6 +271,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 const hours = String(now.getHours()).padStart(2, '0');
                 const minutes = String(now.getMinutes()).padStart(2, '0');
                 document.getElementById('incident_datetime').value = `${year}-${month}-${day}T${hours}:${minutes}`;
+                // Reset incident type highlighting
+                const allTypeItems = document.querySelectorAll('.incident-type-item');
+                allTypeItems.forEach(item => {
+                    item.style.border = '1px solid var(--border-color)';
+                    item.style.backgroundColor = 'var(--background-color)';
+                    item.style.transform = 'none';
+                    item.style.boxShadow = 'none';
+                });
             } else {
                 showMessage(result.message, 'error');
             }

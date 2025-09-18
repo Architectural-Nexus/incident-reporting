@@ -1,6 +1,6 @@
-# Incident Reports Application - Non-Docker Deployment
+# Incident Reports Application - Production Deployment
 
-This document explains how to deploy and run the Incident Reports Application as a system service without using Docker.
+This document explains how to deploy and run the Incident Reports Application as a system service for production use.
 
 ## Prerequisites
 
@@ -259,30 +259,31 @@ For issues and questions:
 3. Check system service status
 4. Verify file permissions and ownership
 
-## Migration from Docker
+## Data Migration
 
-If you're migrating from the Docker setup:
+If you're migrating from a previous installation:
 
-1. **Stop Docker containers**:
+1. **Backup existing data**:
    ```bash
-   docker-compose down
+   # Backup your existing database
+   sudo cp /path/to/old/incidents.db /backup/location/
    ```
 
-2. **Backup your data**:
-   ```bash
-   # If using Docker volumes
-   docker run --rm -v incident_data:/data -v $(pwd):/backup alpine tar czf /backup/data_backup.tar.gz -C /data .
-   ```
-
-3. **Deploy using the new method**:
+2. **Deploy using the deployment script**:
    ```bash
    sudo ./deploy.sh
    ```
 
-4. **Restore data** (if needed):
+3. **Restore data** (if needed):
    ```bash
-   # Extract backup to data directory
-   sudo tar xzf data_backup.tar.gz -C /var/lib/incident-reports/
+   # Copy database to new location
+   sudo cp /backup/location/incidents.db /var/lib/incident-reports/
    sudo chown -R incident-reports:incident-reports /var/lib/incident-reports/
+   
+   # Run database migration if needed
+   cd /opt/incident-reports
+   sudo -u incident-reports python migrate_database.py /var/lib/incident-reports/incidents.db
+   
+   # Restart the service
    sudo systemctl restart incident-reports
    ``` 

@@ -19,6 +19,7 @@ A Flask-based web application for reporting and managing incidents within an org
 - SQLite (default) or PostgreSQL/MySQL
 - Nginx (for production)
 - Gunicorn (for production)
+- SystemD (for service management)
 
 ## Installation
 
@@ -26,7 +27,7 @@ A Flask-based web application for reporting and managing incidents within an org
 
 ```bash
 git clone <repository-url>
-cd work_incidents
+cd incident-reporting
 ```
 
 ### 2. Create Virtual Environment
@@ -85,11 +86,11 @@ The application will be available at `http://localhost:5000`
 
 ## Production Deployment
 
-### Option 1: Non-Docker Deployment (Recommended)
+### Quick Deployment
 
-For a simple deployment without Docker, use the provided deployment scripts:
+For a simple production deployment, use the provided deployment scripts:
 
-1. **Quick Deployment**
+1. **Automated Deployment**
    ```bash
    sudo chmod +x deploy.sh
    sudo ./deploy.sh
@@ -108,7 +109,7 @@ For a simple deployment without Docker, use the provided deployment scripts:
 
 For detailed instructions, see [README-NoDocker.md](README-NoDocker.md)
 
-### Option 2: Docker Deployment
+### Manual Production Setup
 
 #### Ubuntu Server Setup
 
@@ -116,7 +117,7 @@ For detailed instructions, see [README-NoDocker.md](README-NoDocker.md)
 
 ```bash
 sudo apt update
-sudo apt install python3 python3-pip python3-venv nginx docker.io docker-compose
+sudo apt install python3 python3-pip python3-venv nginx
 ```
 
 2. **Set Up Application Directory**
@@ -195,14 +196,94 @@ sudo ufw allow 'Nginx Full'
 sudo ufw enable
 ```
 
-### SSL/HTTPS Setup (Optional)
+### SSL/HTTPS Setup
 
-For HTTPS, you can use Let's Encrypt:
+For production deployments, SSL/HTTPS is strongly recommended. The nginx configuration is pre-configured for SSL with modern security settings.
+
+#### Option 1: Let's Encrypt (Recommended)
+
+Use the provided SSL setup script for automatic Let's Encrypt certificate installation:
 
 ```bash
-sudo apt install certbot python3-certbot-nginx
-sudo certbot --nginx -d your-domain.com
+# Make the SSL setup script executable
+sudo chmod +x setup_ssl.sh
+
+# Run the SSL setup script
+sudo ./setup_ssl.sh
 ```
+
+The script will:
+- Install Certbot
+- Obtain Let's Encrypt certificates
+- Update nginx configuration with certificate paths
+- Setup automatic certificate renewal
+- Configure HTTPS redirects
+
+#### Option 2: Enterprise/Internal CA Certificates
+
+For organizations using internal Certificate Authorities:
+
+**Automated Setup (Recommended):**
+```bash
+sudo ./setup_ssl.sh
+# Select option 2 for enterprise/internal CA certificate
+```
+
+The script will guide you through:
+- Installing your server certificate and private key
+- Setting up certificate chains (intermediate certificates)
+- Installing root CA certificates for system trust
+- Validating certificate and key compatibility
+- Automatic nginx configuration
+
+**Manual Setup:**
+```bash
+# Copy certificates
+sudo cp your-certificate.crt /etc/ssl/certs/incident-reports.crt
+sudo cp your-private-key.key /etc/ssl/private/incident-reports.key
+sudo cp certificate-chain.crt /etc/ssl/certs/incident-reports-chain.crt
+
+# Create full chain (server cert + intermediate certs)
+sudo cat /etc/ssl/certs/incident-reports.crt /etc/ssl/certs/incident-reports-chain.crt > /etc/ssl/certs/incident-reports-fullchain.crt
+
+# Set proper permissions
+sudo chmod 644 /etc/ssl/certs/incident-reports*.crt
+sudo chmod 600 /etc/ssl/private/incident-reports.key
+
+# Update nginx configuration
+sudo nano /etc/nginx/sites-available/incident-reports
+# Change: ssl_certificate /etc/ssl/certs/incident-reports-fullchain.crt;
+
+# Test and reload
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+#### Option 3: Certificate Signing Request (CSR)
+
+To generate a CSR for your Certificate Authority:
+
+```bash
+sudo ./setup_ssl.sh
+# Select option 3 to create a CSR
+```
+
+This will:
+- Generate a private key
+- Create a Certificate Signing Request
+- Display the CSR content for submission to your CA
+- Provide next steps for certificate installation
+
+#### Option 4: Self-Signed Certificates (Development Only)
+
+For development or testing environments:
+
+```bash
+sudo ./setup_ssl.sh
+# Select option 4 for self-signed certificates
+```
+
+**Note**: Self-signed certificates will show security warnings in browsers.
 
 ## Usage
 

@@ -49,21 +49,48 @@ class User(UserMixin, db.Model):
 
 class Incident(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    # Reporter information (all optional)
     reporter_name = db.Column(db.String(100), default='Anonymous')
+    reporter_job_title = db.Column(db.String(100), nullable=True)
+    reporter_email = db.Column(db.String(120), nullable=True)
+    reporter_phone = db.Column(db.String(20), nullable=True)
+    # Incident details
     incident_datetime = db.Column(db.DateTime, nullable=False)
+    incident_type = db.Column(db.String(50), nullable=False)
     location = db.Column(db.String(200), nullable=False)
-    persons_involved = db.Column(db.Text, nullable=False)
+    # Legacy field for compatibility (will be removed in future)
     description = db.Column(db.Text, nullable=False)
+    # Detailed incident information
+    incident_description = db.Column(db.Text, nullable=False)  # What happened and how it started
+    persons_involved = db.Column(db.Text, nullable=False)  # Names, job titles, identifiers of those involved
+    threats_weapons = db.Column(db.Text, nullable=True)  # Nature of threats, physical acts, or weapons used
+    medical_treatment = db.Column(db.Text, nullable=True)  # Whether medical treatment was needed
+    law_enforcement = db.Column(db.Text, nullable=True)  # Whether law enforcement was contacted
+    security_intervention = db.Column(db.Text, nullable=True)  # Whether security or other intervention was required
+    incident_response = db.Column(db.Text, nullable=True)  # How incident was responded to (de-escalation, first aid, etc.)
+    contributing_factors = db.Column(db.Text, nullable=True)  # Contributing factors (environmental, organizational, procedural)
+    corrective_actions = db.Column(db.Text, nullable=True)  # Corrective actions taken or recommended
     submitted_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def to_dict(self):
         return {
             'id': self.id,
             'reporter_name': self.reporter_name,
+            'reporter_job_title': self.reporter_job_title,
+            'reporter_email': self.reporter_email,
+            'reporter_phone': self.reporter_phone,
             'incident_datetime': self.incident_datetime.strftime('%Y-%m-%d %H:%M'),
+            'incident_type': self.incident_type,
             'location': self.location,
+            'incident_description': self.incident_description,
             'persons_involved': self.persons_involved,
-            'description': self.description,
+            'threats_weapons': self.threats_weapons,
+            'medical_treatment': self.medical_treatment,
+            'law_enforcement': self.law_enforcement,
+            'security_intervention': self.security_intervention,
+            'incident_response': self.incident_response,
+            'contributing_factors': self.contributing_factors,
+            'corrective_actions': self.corrective_actions,
             'submitted_at': self.submitted_at.strftime('%Y-%m-%d %H:%M')
         }
 
@@ -81,19 +108,36 @@ def index():
 def submit_incident():
     """Handle incident form submission"""
     try:
-        # Get form data
-        reporter_name = request.form.get('reporter_name', 'Anonymous').strip()
+        # Get reporter information (all optional)
+        reporter_name = request.form.get('reporter_name', '').strip()
         if not reporter_name:
             reporter_name = 'Anonymous'
+        reporter_job_title = request.form.get('reporter_job_title', '').strip() or None
+        reporter_email = request.form.get('reporter_email', '').strip() or None
+        reporter_phone = request.form.get('reporter_phone', '').strip() or None
         
+        # Get incident details
         incident_datetime_str = request.form.get('incident_datetime')
+        incident_type = request.form.get('incident_type', '').strip()
         location = request.form.get('location', '').strip()
+        incident_description = request.form.get('incident_description', '').strip()
         persons_involved = request.form.get('persons_involved', '').strip()
-        description = request.form.get('description', '').strip()
+        threats_weapons = request.form.get('threats_weapons', '').strip() or None
+        medical_treatment = request.form.get('medical_treatment', '').strip() or None
+        law_enforcement = request.form.get('law_enforcement', '').strip() or None
+        security_intervention = request.form.get('security_intervention', '').strip() or None
+        incident_response = request.form.get('incident_response', '').strip() or None
+        contributing_factors = request.form.get('contributing_factors', '').strip() or None
+        corrective_actions = request.form.get('corrective_actions', '').strip() or None
 
         # Validate required fields
-        if not incident_datetime_str or not location or not persons_involved or not description:
+        if not incident_datetime_str or not incident_type or not location or not incident_description or not persons_involved:
             return jsonify({'success': False, 'message': 'All required fields must be filled out'}), 400
+
+        # Validate incident type
+        valid_types = ['Type 1 – Criminal Intent', 'Type 2 – Customer / Client / Patient', 'Type 3 – Worker-on-Worker', 'Type 4 – Personal Relationship']
+        if incident_type not in valid_types:
+            return jsonify({'success': False, 'message': 'Invalid incident type selected'}), 400
 
         # Parse datetime
         try:
@@ -104,10 +148,22 @@ def submit_incident():
         # Create and save incident
         incident = Incident(
             reporter_name=reporter_name,
+            reporter_job_title=reporter_job_title,
+            reporter_email=reporter_email,
+            reporter_phone=reporter_phone,
             incident_datetime=incident_datetime,
+            incident_type=incident_type,
             location=location,
+            description=incident_description,  # Populate old field for compatibility
+            incident_description=incident_description,
             persons_involved=persons_involved,
-            description=description
+            threats_weapons=threats_weapons,
+            medical_treatment=medical_treatment,
+            law_enforcement=law_enforcement,
+            security_intervention=security_intervention,
+            incident_response=incident_response,
+            contributing_factors=contributing_factors,
+            corrective_actions=corrective_actions
         )
         
         db.session.add(incident)
@@ -175,9 +231,19 @@ def get_incidents():
             query = query.filter(
                 db.or_(
                     Incident.reporter_name.ilike(f'%{search}%'),
+                    Incident.reporter_job_title.ilike(f'%{search}%'),
+                    Incident.reporter_email.ilike(f'%{search}%'),
+                    Incident.incident_type.ilike(f'%{search}%'),
                     Incident.location.ilike(f'%{search}%'),
+                    Incident.incident_description.ilike(f'%{search}%'),
                     Incident.persons_involved.ilike(f'%{search}%'),
-                    Incident.description.ilike(f'%{search}%')
+                    Incident.threats_weapons.ilike(f'%{search}%'),
+                    Incident.medical_treatment.ilike(f'%{search}%'),
+                    Incident.law_enforcement.ilike(f'%{search}%'),
+                    Incident.security_intervention.ilike(f'%{search}%'),
+                    Incident.incident_response.ilike(f'%{search}%'),
+                    Incident.contributing_factors.ilike(f'%{search}%'),
+                    Incident.corrective_actions.ilike(f'%{search}%')
                 )
             )
         
@@ -236,8 +302,11 @@ def export_incidents():
         
         # Write header
         writer.writerow([
-            'ID', 'Reporter Name', 'Incident Date/Time', 'Location', 
-            'Persons Involved', 'Description', 'Submitted At'
+            'ID', 'Reporter Name', 'Job Title', 'Email', 'Phone', 
+            'Incident Date/Time', 'Incident Type', 'Location', 
+            'Incident Description', 'Persons Involved', 'Threats/Weapons', 
+            'Medical Treatment', 'Law Enforcement', 'Security Intervention',
+            'Incident Response', 'Contributing Factors', 'Corrective Actions', 'Submitted At'
         ])
         
         # Write data
@@ -246,10 +315,21 @@ def export_incidents():
                 writer.writerow([
                     incident.id,
                     incident.reporter_name or 'Anonymous',
+                    incident.reporter_job_title or '',
+                    incident.reporter_email or '',
+                    incident.reporter_phone or '',
                     incident.incident_datetime.strftime('%Y-%m-%d %H:%M') if incident.incident_datetime else '',
+                    incident.incident_type or '',
                     incident.location or '',
+                    incident.incident_description or '',
                     incident.persons_involved or '',
-                    incident.description or '',
+                    incident.threats_weapons or '',
+                    incident.medical_treatment or '',
+                    incident.law_enforcement or '',
+                    incident.security_intervention or '',
+                    incident.incident_response or '',
+                    incident.contributing_factors or '',
+                    incident.corrective_actions or '',
                     incident.submitted_at.strftime('%Y-%m-%d %H:%M') if incident.submitted_at else ''
                 ])
             except Exception as row_error:
@@ -257,6 +337,17 @@ def export_incidents():
                 # Write a placeholder row for failed incidents
                 writer.writerow([
                     incident.id,
+                    'ERROR',
+                    'ERROR',
+                    'ERROR',
+                    'ERROR',
+                    'ERROR',
+                    'ERROR',
+                    'ERROR',
+                    'ERROR',
+                    'ERROR',
+                    'ERROR',
+                    'ERROR',
                     'ERROR',
                     'ERROR',
                     'ERROR',

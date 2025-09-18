@@ -26,6 +26,7 @@
             <select id="sortBy" class="form-input" style="width: auto;">
                 <option value="submitted_at">Submission Date</option>
                 <option value="incident_datetime">Incident Date</option>
+                <option value="incident_type">Incident Type</option>
                 <option value="reporter_name">Reporter Name</option>
                 <option value="location">Location</option>
             </select>
@@ -50,29 +51,87 @@
         </div>
         <div class="modal-body">
             <div class="incident-details">
-                <div class="detail-row">
-                    <div class="detail-label">Reporter Name</div>
-                    <div class="detail-value" id="modalReporter"></div>
+                <!-- Reporter Information -->
+                <div class="detail-section">
+                    <h4 style="margin-bottom: 1rem; color: var(--primary-color); font-size: 1rem;">Reporter Information</h4>
+                    <div class="detail-row">
+                        <div class="detail-label">Name</div>
+                        <div class="detail-value" id="modalReporter"></div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Job Title</div>
+                        <div class="detail-value" id="modalJobTitle"></div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Email</div>
+                        <div class="detail-value" id="modalEmail"></div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Phone</div>
+                        <div class="detail-value" id="modalPhone"></div>
+                    </div>
                 </div>
-                <div class="detail-row">
-                    <div class="detail-label">Incident Date/Time</div>
-                    <div class="detail-value" id="modalIncidentDateTime"></div>
+                
+                <!-- Incident Details -->
+                <div class="detail-section">
+                    <h4 style="margin-bottom: 1rem; color: var(--primary-color); font-size: 1rem;">Incident Details</h4>
+                    <div class="detail-row">
+                        <div class="detail-label">Type</div>
+                        <div class="detail-value" id="modalIncidentType"></div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Date/Time</div>
+                        <div class="detail-value" id="modalIncidentDateTime"></div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Location</div>
+                        <div class="detail-value" id="modalLocation"></div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Description of What Happened</div>
+                        <div class="detail-value scrollable" id="modalIncidentDescription"></div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Persons Involved</div>
+                        <div class="detail-value scrollable" id="modalPersonsInvolved"></div>
+                    </div>
                 </div>
-                <div class="detail-row">
-                    <div class="detail-label">Location</div>
-                    <div class="detail-value" id="modalLocation"></div>
-                </div>
-                <div class="detail-row">
-                    <div class="detail-label">Persons Involved</div>
-                    <div class="detail-value" id="modalPersonsInvolved"></div>
-                </div>
-                <div class="detail-row">
-                    <div class="detail-label">Description</div>
-                    <div class="detail-value scrollable" id="modalDescription"></div>
-                </div>
-                <div class="detail-row">
-                    <div class="detail-label">Submitted</div>
-                    <div class="detail-value" id="modalSubmitted"></div>
+                
+                <!-- Additional Details -->
+                <div class="detail-section">
+                    <h4 style="margin-bottom: 1rem; color: var(--primary-color); font-size: 1rem;">Additional Details</h4>
+                    <div class="detail-row">
+                        <div class="detail-label">Threats, Physical Acts, or Weapons</div>
+                        <div class="detail-value scrollable" id="modalThreatsWeapons"></div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Medical Treatment</div>
+                        <div class="detail-value scrollable" id="modalMedicalTreatment"></div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Law Enforcement Contact</div>
+                        <div class="detail-value scrollable" id="modalLawEnforcement"></div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Security or Other Intervention</div>
+                        <div class="detail-value scrollable" id="modalSecurityIntervention"></div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Incident Response</div>
+                        <div class="detail-value scrollable" id="modalIncidentResponse"></div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Contributing Factors</div>
+                        <div class="detail-value scrollable" id="modalContributingFactors"></div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Corrective Actions</div>
+                        <div class="detail-value scrollable" id="modalCorrectiveActions"></div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Submitted</div>
+                        <div class="detail-value" id="modalSubmitted"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -96,13 +155,17 @@
 
     .modal-content {
         background-color: var(--surface-color);
-        margin: 5% auto;
+        margin: 2% auto;
         padding: 0;
         border-radius: 0.5rem;
-        width: 90%;
-        max-width: 900px;
+        width: 95%;
+        max-width: 1000px;
+        max-height: 95vh;
         box-shadow: var(--shadow-lg);
         animation: modalSlideIn 0.3s ease-out;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
     }
 
     @keyframes modalSlideIn {
@@ -124,6 +187,7 @@
         border-bottom: 1px solid var(--border-color);
         background-color: var(--background-color);
         border-radius: 0.5rem 0.5rem 0 0;
+        flex-shrink: 0; /* Prevent header from shrinking */
     }
 
     .modal-header h2 {
@@ -146,6 +210,28 @@
 
     .modal-body {
         padding: 1.5rem;
+        overflow-y: auto;
+        flex: 1;
+        max-height: calc(95vh - 120px); /* Account for header height */
+    }
+
+    /* Custom scrollbar for modal body */
+    .modal-body::-webkit-scrollbar {
+        width: 8px;
+    }
+
+    .modal-body::-webkit-scrollbar-track {
+        background: var(--background-color);
+        border-radius: 4px;
+    }
+
+    .modal-body::-webkit-scrollbar-thumb {
+        background: var(--border-color);
+        border-radius: 4px;
+    }
+
+    .modal-body::-webkit-scrollbar-thumb:hover {
+        background: var(--text-secondary);
     }
 
     .incident-details {
@@ -202,6 +288,30 @@
         background: var(--text-secondary);
     }
 
+    /* Detail sections */
+    .detail-section {
+        margin-bottom: 2rem;
+        padding-bottom: 1.5rem;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .detail-section:last-child {
+        border-bottom: none;
+        margin-bottom: 0;
+        padding-bottom: 0;
+    }
+
+    /* Incident type badge styling */
+    .incident-type-badge {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.25rem;
+        font-weight: 500;
+        white-space: nowrap;
+        background-color: var(--primary-color);
+        color: white;
+    }
+
     /* Table row hover effect */
     .incident-row:hover {
         background-color: var(--background-color) !important;
@@ -234,8 +344,9 @@
     /* Responsive modal */
     @media (max-width: 768px) {
         .modal-content {
-            width: 95%;
-            margin: 10% auto;
+            width: 98%;
+            margin: 1% auto;
+            max-height: 98vh;
         }
         
         .modal-header {
@@ -244,6 +355,7 @@
         
         .modal-body {
             padding: 1rem;
+            max-height: calc(98vh - 100px); /* Account for smaller header on mobile */
         }
         
         .detail-row {
@@ -255,7 +367,7 @@
         }
         
         .detail-value.scrollable {
-            max-height: 150px;
+            max-height: 120px;
             padding: 0.5rem;
         }
         
@@ -352,7 +464,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 <thead>
                     <tr>
                         <th>Reporter</th>
+                        <th>Type</th>
                         <th>Incident Date/Time</th>
+                        <th>Location</th>
                         <th>Description</th>
                     </tr>
                 </thead>
@@ -360,8 +474,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     ${incidents.map(incident => `
                         <tr class="incident-row" data-incident='${JSON.stringify(incident)}' style="cursor: pointer;">
                             <td>${escapeHtml(incident.reporter_name)}</td>
+                            <td><span class="badge incident-type-badge">${escapeHtml(incident.incident_type)}</span></td>
                             <td>${formatDateTime(incident.incident_datetime)}</td>
-                            <td>${escapeHtml(incident.description.length > 100 ? incident.description.substring(0, 100) + '...' : incident.description)}</td>
+                            <td>${escapeHtml(incident.location.length > 30 ? incident.location.substring(0, 30) + '...' : incident.location)}</td>
+                            <td>${escapeHtml(incident.incident_description.length > 80 ? incident.incident_description.substring(0, 80) + '...' : incident.incident_description)}</td>
                         </tr>
                     `).join('')}
                 </tbody>
@@ -448,11 +564,28 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Function to show incident details in modal
     function showIncidentDetails(incident) {
-        document.getElementById('modalReporter').textContent = incident.reporter_name;
+        // Reporter information
+        document.getElementById('modalReporter').textContent = incident.reporter_name || 'Anonymous';
+        document.getElementById('modalJobTitle').textContent = incident.reporter_job_title || 'Not provided';
+        document.getElementById('modalEmail').textContent = incident.reporter_email || 'Not provided';
+        document.getElementById('modalPhone').textContent = incident.reporter_phone || 'Not provided';
+        
+        // Incident details
+        document.getElementById('modalIncidentType').textContent = incident.incident_type;
         document.getElementById('modalIncidentDateTime').textContent = formatDateTime(incident.incident_datetime);
         document.getElementById('modalLocation').textContent = incident.location;
+        document.getElementById('modalIncidentDescription').textContent = incident.incident_description;
         document.getElementById('modalPersonsInvolved').textContent = incident.persons_involved;
-        document.getElementById('modalDescription').textContent = incident.description;
+        
+        // Additional details (show "Not provided" for empty fields)
+        document.getElementById('modalThreatsWeapons').textContent = incident.threats_weapons || 'Not provided';
+        document.getElementById('modalMedicalTreatment').textContent = incident.medical_treatment || 'Not provided';
+        document.getElementById('modalLawEnforcement').textContent = incident.law_enforcement || 'Not provided';
+        document.getElementById('modalSecurityIntervention').textContent = incident.security_intervention || 'Not provided';
+        document.getElementById('modalIncidentResponse').textContent = incident.incident_response || 'Not provided';
+        document.getElementById('modalContributingFactors').textContent = incident.contributing_factors || 'Not provided';
+        document.getElementById('modalCorrectiveActions').textContent = incident.corrective_actions || 'Not provided';
+        
         document.getElementById('modalSubmitted').textContent = formatDateTime(incident.submitted_at);
         
         modal.style.display = 'block';
