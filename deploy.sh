@@ -119,21 +119,43 @@ copy_application() {
 setup_python_env() {
     print_status "Setting up Python virtual environment..."
     
-    # Check if Python 3 is available
-    if ! command -v python3 &> /dev/null; then
-        print_error "Python 3 is not installed. Please install Python 3.8 or higher."
+    # Check for Python 3.12 first, then fallback to python3
+    PYTHON_CMD=""
+    if command -v python3.12 &> /dev/null; then
+        PYTHON_CMD="python3.12"
+        PIP_CMD="pip3.12"
+        print_status "Using Python 3.12"
+    elif command -v /usr/local/bin/python3.12 &> /dev/null; then
+        PYTHON_CMD="/usr/local/bin/python3.12"
+        PIP_CMD="/usr/local/bin/pip3.12"
+        print_status "Using Python 3.12 from /usr/local/bin"
+    elif command -v python3 &> /dev/null; then
+        # Check if python3 version is at least 3.8
+        PYTHON_VERSION=$(python3 -c "import sys; print('.'.join(map(str, sys.version_info[:2])))")
+        if python3 -c "import sys; exit(0 if sys.version_info >= (3, 8) else 1)"; then
+            PYTHON_CMD="python3"
+            PIP_CMD="pip3"
+            print_status "Using Python $PYTHON_VERSION"
+        else
+            print_error "Python version $PYTHON_VERSION is too old. This application requires Python 3.8 or higher."
+            print_error "Please install Python 3.12 using: sudo dnf install python3.12 python3.12-pip"
+            exit 1
+        fi
+    else
+        print_error "Python 3 is not installed. Please install Python 3.12."
+        print_error "Run: sudo dnf install python3.12 python3.12-pip python3.12-devel"
         exit 1
     fi
     
-    # Check if pip3 is available
-    if ! command -v pip3 &> /dev/null; then
-        print_error "pip3 is not installed. Please install pip3."
+    # Check if pip is available
+    if ! command -v $PIP_CMD &> /dev/null; then
+        print_error "$PIP_CMD is not installed. Please install it."
         exit 1
     fi
     
     # Create virtual environment
     cd $APP_DIR
-    python3 -m venv $VENV_DIR
+    $PYTHON_CMD -m venv $VENV_DIR
     
     # Activate virtual environment and install dependencies
     source $VENV_DIR/bin/activate
