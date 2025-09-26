@@ -5,4 +5,5 @@ Flask-WTF==1.1.1
 WTForms==3.0.1
 python-dotenv==1.0.0
 Werkzeug==2.3.7
-gunicorn==21.2.0 
+gunicorn==21.2.0
+reportlab==4.0.4 

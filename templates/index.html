@@ -167,6 +167,7 @@
 
         <div style="display: flex; gap: 1rem; margin-top: 2rem;">
             <button type="submit" class="btn btn-primary">Submit Report</button>
+            <button type="button" id="exportPdfBtn" class="btn btn-outline">Export as PDF</button>
             <button type="reset" class="btn btn-secondary">Clear Form</button>
         </div>
     </form>
@@ -288,6 +289,59 @@ document.addEventListener('DOMContentLoaded', function() {
         } finally {
             submitBtn.textContent = originalText;
             submitBtn.disabled = false;
+        }
+    });
+    
+    // PDF Export functionality
+    const exportPdfBtn = document.getElementById('exportPdfBtn');
+    exportPdfBtn.addEventListener('click', async function() {
+        const originalText = exportPdfBtn.textContent;
+        exportPdfBtn.textContent = 'Generating PDF...';
+        exportPdfBtn.disabled = true;
+        
+        try {
+            // Collect all form data
+            const formData = new FormData(form);
+            
+            // Convert FormData to JSON for easier handling
+            const formDataObj = {};
+            for (let [key, value] of formData.entries()) {
+                formDataObj[key] = value;
+            }
+            
+            const response = await fetch('/export_incident_pdf', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(formDataObj)
+            });
+            
+            if (response.ok) {
+                // Create blob from response
+                const blob = await response.blob();
+                
+                // Create download link
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `incident_report_${new Date().toISOString().split('T')[0]}.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                
+                showMessage('PDF exported successfully!', 'success');
+            } else {
+                const errorData = await response.json();
+                showMessage(errorData.message || 'Error generating PDF', 'error');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            showMessage('An error occurred while generating the PDF. Please try again.', 'error');
+        } finally {
+            exportPdfBtn.textContent = originalText;
+            exportPdfBtn.disabled = false;
         }
     });
     

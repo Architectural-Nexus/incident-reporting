@@ -8,6 +8,11 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.lib import colors
 
 # Load environment variables
 load_dotenv()
@@ -504,6 +509,162 @@ def delete_user(user_id):
     
     return redirect(url_for('admin_users'))
 
+@app.route('/export_incident_pdf', methods=['POST'])
+def export_incident_pdf():
+    """Export incident form data as PDF"""
+    try:
+        data = request.get_json()
+        
+        # Create PDF in memory
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter)
+        story = []
+        
+        # Get styles
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=16,
+            spaceAfter=30,
+            alignment=1,  # Center alignment
+            textColor=colors.darkblue
+        )
+        
+        heading_style = ParagraphStyle(
+            'CustomHeading',
+            parent=styles['Heading2'],
+            fontSize=12,
+            spaceAfter=12,
+            spaceBefore=12,
+            textColor=colors.darkblue
+        )
+        
+        normal_style = styles['Normal']
+        normal_style.fontSize = 10
+        normal_style.spaceAfter = 6
+        
+        # Title
+        story.append(Paragraph("INCIDENT REPORT", title_style))
+        story.append(Spacer(1, 20))
+        
+        # Reporter Information Section
+        story.append(Paragraph("Reporter Information", heading_style))
+        
+        reporter_data = [
+            ['Reporter Name:', data.get('reporter_name', 'Anonymous')],
+            ['Job Title:', data.get('reporter_job_title', 'Not provided')],
+            ['Email:', data.get('reporter_email', 'Not provided')],
+            ['Phone:', data.get('reporter_phone', 'Not provided')]
+        ]
+        
+        reporter_table = Table(reporter_data, colWidths=[2*inch, 4*inch])
+        reporter_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 0),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+        ]))
+        
+        story.append(reporter_table)
+        story.append(Spacer(1, 20))
+        
+        # Incident Details Section
+        story.append(Paragraph("Incident Details", heading_style))
+        
+        # Parse datetime
+        incident_datetime = data.get('incident_datetime', '')
+        if incident_datetime:
+            try:
+                dt = datetime.fromisoformat(incident_datetime.replace('T', ' '))
+                formatted_datetime = dt.strftime('%B %d, %Y at %I:%M %p')
+            except:
+                formatted_datetime = incident_datetime
+        else:
+            formatted_datetime = 'Not provided'
+        
+        incident_data = [
+            ['Date/Time:', formatted_datetime],
+            ['Type:', data.get('incident_type', 'Not provided')],
+            ['Location:', data.get('location', 'Not provided')]
+        ]
+        
+        incident_table = Table(incident_data, colWidths=[2*inch, 4*inch])
+        incident_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 0),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+        ]))
+        
+        story.append(incident_table)
+        story.append(Spacer(1, 20))
+        
+        # Required Information
+        story.append(Paragraph("Description of What Happened", heading_style))
+        story.append(Paragraph(data.get('incident_description', 'Not provided'), normal_style))
+        story.append(Spacer(1, 12))
+        
+        story.append(Paragraph("Names and Identifiers of Those Involved", heading_style))
+        story.append(Paragraph(data.get('persons_involved', 'Not provided'), normal_style))
+        story.append(Spacer(1, 20))
+        
+        # Additional Details Section
+        story.append(Paragraph("Additional Incident Details", heading_style))
+        
+        additional_fields = [
+            ('Nature of Threats, Physical Acts, or Weapons Used:', 'threats_weapons'),
+            ('Medical Treatment:', 'medical_treatment'),
+            ('Law Enforcement Contact:', 'law_enforcement'),
+            ('Security or Other Intervention:', 'security_intervention'),
+            ('How the Incident Was Responded To:', 'incident_response'),
+            ('Contributing Factors:', 'contributing_factors'),
+            ('Corrective Actions:', 'corrective_actions')
+        ]
+        
+        for field_name, field_key in additional_fields:
+            value = data.get(field_key, '').strip()
+            if value:  # Only include fields that have content
+                story.append(Paragraph(field_name, ParagraphStyle(
+                    'FieldLabel',
+                    parent=normal_style,
+                    fontName='Helvetica-Bold',
+                    fontSize=10,
+                    spaceAfter=3
+                )))
+                story.append(Paragraph(value, normal_style))
+                story.append(Spacer(1, 8))
+        
+        # Footer
+        story.append(Spacer(1, 30))
+        story.append(Paragraph(f"Report generated on: {datetime.now().strftime('%B %d, %Y at %I:%M %p')}", 
+                             ParagraphStyle('Footer', parent=normal_style, fontSize=8, 
+                                           textColor=colors.grey, alignment=1)))
+        
+        # Build PDF
+        doc.build(story)
+        buffer.seek(0)
+        
+        logger.info("PDF incident report generated successfully")
+        
+        # Return PDF as response
+        return send_file(
+            buffer,
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name=f'incident_report_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error generating PDF: {str(e)}")
+        return jsonify({'success': False, 'message': 'Error generating PDF'}), 500
+
 # Error handlers
 @app.errorhandler(404)
 def not_found_error(error):
@@ -582,4 +743,4 @@ if __name__ == '__main__':
             logger.info("Default admin user created on startup: admin/admin123")
             print('Default admin user created: admin/admin123')
     
-    app.run(debug=True, host='0.0.0.0', port=5000) 
+    app.run(debug=True, host='0.0.0.0', port=5001) 
