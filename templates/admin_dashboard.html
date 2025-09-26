@@ -716,6 +716,7 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Create form data object
             const formDataObj = {
+                incident_id: incidentData.id || '',
                 reporter_name: incidentData.reporter_name || '',
                 reporter_job_title: incidentData.reporter_job_title || '',
                 reporter_email: incidentData.reporter_email || '',

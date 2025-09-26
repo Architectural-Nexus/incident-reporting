@@ -136,7 +136,7 @@ def load_user(user_id):
     return User.query.get(int(user_id))
 
 # Helper Functions
-def send_incident_notification(incident):
+def send_incident_notification(incident, anonymous_email=None):
     """Send email notification when an incident is reported"""
     try:
         email_config = EmailConfig.query.first()
@@ -159,7 +159,7 @@ def send_incident_notification(incident):
         # Format incident datetime
         incident_datetime_str = incident.incident_datetime.strftime('%B %d, %Y at %I:%M %p')
         
-        # Create email message
+        # Create email message for administrators
         msg = Message(
             subject='Notice: A Work Place Incident Has Been Reported',
             sender=email_config.mail_default_sender,
@@ -184,10 +184,36 @@ Submitted: {incident.submitted_at.strftime('%B %d, %Y at %I:%M %p')}
 This is an automated notification from the Work Place Violence Reporting Server.
         """
         
-        # Send email
+        # Send notification email to administrators
         notification_mail.send(msg)
+        logger.info(f"Incident notification email sent for incident #{incident.id}")
         
-        logger.info(f"Email notification sent for incident #{incident.id}")
+        # If anonymous email is provided, send confirmation email to reporter
+        if anonymous_email:
+            confirmation_msg = Message(
+                subject='Incident Report Confirmation',
+                sender=email_config.mail_default_sender,
+                recipients=[anonymous_email]
+            )
+            
+            confirmation_msg.body = f"""Thank you for reporting the workplace incident. Your report has been received and will be reviewed by the appropriate personnel.
+
+Incident ID: #{incident.id}
+Date/Time: {incident_datetime_str}
+Type: {incident.incident_type}
+Location: {incident.location}
+
+Your report has been submitted anonymously as requested. Your email address has not been recorded in the incident report.
+
+Submitted: {incident.submitted_at.strftime('%B %d, %Y at %I:%M %p')}
+
+---
+This is an automated confirmation from the Work Place Violence Reporting Server.
+            """
+            
+            notification_mail.send(confirmation_msg)
+            logger.info(f"Confirmation email sent to anonymous reporter: {anonymous_email}")
+        
         return True
         
     except Exception as e:
@@ -211,6 +237,13 @@ def submit_incident():
         reporter_job_title = request.form.get('reporter_job_title', '').strip() or None
         reporter_email = request.form.get('reporter_email', '').strip() or None
         reporter_phone = request.form.get('reporter_phone', '').strip() or None
+        remain_anonymous = request.form.get('remain_anonymous') == 'on'
+        
+        # If user wants to remain anonymous, don't store their email in the database
+        # but keep it for sending confirmation email
+        anonymous_email = reporter_email if remain_anonymous else None
+        if remain_anonymous:
+            reporter_email = None
         
         # Get incident details
         incident_datetime_str = request.form.get('incident_datetime')
@@ -280,7 +313,7 @@ def submit_incident():
         logger.info(f"New incident reported: ID={incident.id}, Location={location}, Reporter={reporter_name}")
         
         # Send email notification after successful database save
-        email_sent = send_incident_notification(incident)
+        email_sent = send_incident_notification(incident, anonymous_email)
         if email_sent:
             logger.info(f"Email notification sent for incident #{incident.id}")
         else:
@@ -938,7 +971,19 @@ def export_modal_pdf():
         
         # Title
         story.append(Paragraph("INCIDENT REPORT", title_style))
-        story.append(Spacer(1, 20))
+        story.append(Spacer(1, 10))
+        
+        # Incident ID
+        incident_id = data.get('incident_id', 'N/A')
+        story.append(Paragraph(f"Incident ID: #{incident_id}", ParagraphStyle(
+            'IncidentID',
+            parent=styles['Heading2'],
+            fontSize=14,
+            spaceAfter=20,
+            alignment=1,  # Center alignment
+            textColor=colors.darkblue
+        )))
+        story.append(Spacer(1, 10))
         
         # Reporter Information Section
         story.append(Paragraph("Reporter Information", heading_style))
