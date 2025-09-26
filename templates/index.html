@@ -135,9 +135,18 @@
             </div>
 
             <div class="form-group">
-                <label for="law_enforcement" class="form-label">Law Enforcement Contact</label>
-                <textarea id="law_enforcement" name="law_enforcement" class="form-input form-textarea" 
-                          placeholder="Was law enforcement contacted? Provide details of police involvement"></textarea>
+                <label for="law_enforcement_contacted" class="form-label">Was Law Enforcement Contacted?</label>
+                <select id="law_enforcement_contacted" name="law_enforcement_contacted" class="form-input form-select">
+                    <option value="">Select an option...</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                </select>
+            </div>
+
+            <div class="form-group" id="police_report_id_group" style="display: none;">
+                <label for="police_report_id" class="form-label">Police Report ID:</label>
+                <input type="text" id="police_report_id" name="police_report_id" class="form-input" 
+                       placeholder="Enter Police Report ID" disabled>
             </div>
 
             <div class="form-group">
@@ -275,6 +284,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     item.style.transform = 'none';
                     item.style.boxShadow = 'none';
                 });
+                
+                // Reset law enforcement fields
+                document.getElementById('law_enforcement_contacted').value = '';
+                document.getElementById('police_report_id_group').style.display = 'none';
+                document.getElementById('police_report_id').disabled = true;
+                document.getElementById('police_report_id').value = '';
+                document.getElementById('police_report_id').style.backgroundColor = '#f5f5f5';
+                document.getElementById('police_report_id').style.color = '#999';
             } else {
                 showMessage(result.message, 'error');
             }
@@ -357,6 +374,53 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     });
+    
+    // Law Enforcement Contacted dropdown functionality
+    const lawEnforcementSelect = document.getElementById('law_enforcement_contacted');
+    const policeReportGroup = document.getElementById('police_report_id_group');
+    const policeReportInput = document.getElementById('police_report_id');
+    
+    lawEnforcementSelect.addEventListener('change', function() {
+        if (this.value === 'Yes') {
+            policeReportGroup.style.display = 'block';
+            policeReportInput.disabled = false;
+            policeReportInput.style.backgroundColor = 'white';
+            policeReportInput.style.color = 'var(--text-color)';
+        } else {
+            policeReportGroup.style.display = 'none';
+            policeReportInput.disabled = true;
+            policeReportInput.value = '';
+            policeReportInput.style.backgroundColor = '#f5f5f5';
+            policeReportInput.style.color = '#999';
+        }
+    });
 });
 </script>
+
+<style>
+.form-select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e");
+    background-position: right 0.5rem center;
+    background-repeat: no-repeat;
+    background-size: 1.5em 1.5em;
+    padding-right: 2.5rem;
+}
+
+.form-input:disabled {
+    background-color: #f5f5f5;
+    color: #999;
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+.form-input:not(:disabled) {
+    background-color: white;
+}
+
+.form-input:disabled::placeholder {
+    color: #ccc;
+}
+</style>
+
 {% endblock %} 

@@ -81,7 +81,9 @@ class Incident(db.Model):
     persons_involved = db.Column(db.Text, nullable=False)  # Names, job titles, identifiers of those involved
     threats_weapons = db.Column(db.Text, nullable=True)  # Nature of threats, physical acts, or weapons used
     medical_treatment = db.Column(db.Text, nullable=True)  # Whether medical treatment was needed
-    law_enforcement = db.Column(db.Text, nullable=True)  # Whether law enforcement was contacted
+    law_enforcement = db.Column(db.Text, nullable=True)  # Whether law enforcement was contacted (legacy combined field)
+    law_enforcement_contacted = db.Column(db.String(10), nullable=True)  # Yes/No for law enforcement contact
+    police_report_id = db.Column(db.String(50), nullable=True)  # Police Report ID if applicable
     security_intervention = db.Column(db.Text, nullable=True)  # Whether security or other intervention was required
     incident_response = db.Column(db.Text, nullable=True)  # How incident was responded to (de-escalation, first aid, etc.)
     contributing_factors = db.Column(db.Text, nullable=True)  # Contributing factors (environmental, organizational, procedural)
@@ -218,7 +220,18 @@ def submit_incident():
         persons_involved = request.form.get('persons_involved', '').strip()
         threats_weapons = request.form.get('threats_weapons', '').strip() or None
         medical_treatment = request.form.get('medical_treatment', '').strip() or None
-        law_enforcement = request.form.get('law_enforcement', '').strip() or None
+        law_enforcement_contacted = request.form.get('law_enforcement_contacted', '').strip() or None
+        police_report_id = request.form.get('police_report_id', '').strip() or None
+        
+        # Combine law enforcement data
+        law_enforcement = None
+        if law_enforcement_contacted:
+            if law_enforcement_contacted == 'Yes' and police_report_id:
+                law_enforcement = f"Yes - Police Report ID: {police_report_id}"
+            elif law_enforcement_contacted == 'Yes':
+                law_enforcement = "Yes - No Police Report ID provided"
+            else:
+                law_enforcement = "No"
         security_intervention = request.form.get('security_intervention', '').strip() or None
         incident_response = request.form.get('incident_response', '').strip() or None
         contributing_factors = request.form.get('contributing_factors', '').strip() or None
@@ -252,7 +265,9 @@ def submit_incident():
             persons_involved=persons_involved,
             threats_weapons=threats_weapons,
             medical_treatment=medical_treatment,
-            law_enforcement=law_enforcement,
+            law_enforcement=law_enforcement,  # Combined field for compatibility
+            law_enforcement_contacted=law_enforcement_contacted,  # Individual field
+            police_report_id=police_report_id,  # Individual field
             security_intervention=security_intervention,
             incident_response=incident_response,
             contributing_factors=contributing_factors
@@ -843,7 +858,7 @@ def export_incident_pdf():
         additional_fields = [
             ('Nature of Threats, Physical Acts, or Weapons Used:', 'threats_weapons'),
             ('Medical Treatment:', 'medical_treatment'),
-            ('Law Enforcement Contact:', 'law_enforcement'),
+            ('Was Law Enforcement Contacted:', 'law_enforcement'),
             ('Security or Other Intervention:', 'security_intervention'),
             ('How the Incident Was Responded To:', 'incident_response'),
             ('Contributing Factors:', 'contributing_factors')
@@ -982,7 +997,7 @@ def export_modal_pdf():
         additional_fields = [
             ('Nature of Threats, Physical Acts, or Weapons Used:', 'threats_weapons'),
             ('Medical Treatment:', 'medical_treatment'),
-            ('Law Enforcement Contact:', 'law_enforcement'),
+            ('Was Law Enforcement Contacted:', 'law_enforcement'),
             ('Security or Other Intervention:', 'security_intervention'),
             ('How the Incident Was Responded To:', 'incident_response'),
             ('Contributing Factors:', 'contributing_factors')
