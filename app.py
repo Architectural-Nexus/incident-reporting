@@ -222,7 +222,6 @@ def submit_incident():
         security_intervention = request.form.get('security_intervention', '').strip() or None
         incident_response = request.form.get('incident_response', '').strip() or None
         contributing_factors = request.form.get('contributing_factors', '').strip() or None
-        corrective_actions = request.form.get('corrective_actions', '').strip() or None
 
         # Validate required fields
         if not incident_datetime_str or not incident_type or not location or not incident_description or not persons_involved:
@@ -256,8 +255,7 @@ def submit_incident():
             law_enforcement=law_enforcement,
             security_intervention=security_intervention,
             incident_response=incident_response,
-            contributing_factors=contributing_factors,
-            corrective_actions=corrective_actions
+            contributing_factors=contributing_factors
         )
         
         # Save incident to database first
@@ -707,6 +705,32 @@ Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         logger.error(f"Error sending test email: {str(e)}")
         return jsonify({'success': False, 'message': f'Error sending test email: {str(e)}'}), 500
 
+@app.route('/admin/incidents/<int:incident_id>/corrective-actions', methods=['POST'])
+@login_required
+def update_corrective_actions(incident_id):
+    """Update corrective actions for a specific incident"""
+    try:
+        incident = Incident.query.get_or_404(incident_id)
+        data = request.get_json()
+        
+        corrective_actions = data.get('corrective_actions', '').strip()
+        
+        incident.corrective_actions = corrective_actions if corrective_actions else None
+        db.session.commit()
+        
+        logger.info(f"Admin {current_user.username} updated corrective actions for incident #{incident_id}")
+        
+        return jsonify({
+            'success': True, 
+            'message': 'Corrective actions updated successfully',
+            'corrective_actions': incident.corrective_actions or ''
+        })
+        
+    except Exception as e:
+        logger.error(f"Error updating corrective actions for incident #{incident_id}: {str(e)}")
+        db.session.rollback()
+        return jsonify({'success': False, 'message': 'Error updating corrective actions'}), 500
+
 @app.route('/export_incident_pdf', methods=['POST'])
 def export_incident_pdf():
     """Export incident form data as PDF"""
@@ -822,8 +846,7 @@ def export_incident_pdf():
             ('Law Enforcement Contact:', 'law_enforcement'),
             ('Security or Other Intervention:', 'security_intervention'),
             ('How the Incident Was Responded To:', 'incident_response'),
-            ('Contributing Factors:', 'contributing_factors'),
-            ('Corrective Actions:', 'corrective_actions')
+            ('Contributing Factors:', 'contributing_factors')
         ]
         
         for field_name, field_key in additional_fields:
@@ -862,6 +885,145 @@ def export_incident_pdf():
     except Exception as e:
         logger.error(f"Error generating PDF: {str(e)}")
         return jsonify({'success': False, 'message': 'Error generating PDF'}), 500
+
+@app.route('/export_modal_pdf', methods=['POST'])
+def export_modal_pdf():
+    """Export incident modal data as PDF - specifically for modal exports"""
+    try:
+        data = request.get_json()
+        
+        # Create PDF in memory
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter)
+        story = []
+        
+        # Get styles
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=16,
+            spaceAfter=30,
+            alignment=1,  # Center alignment
+            textColor=colors.darkblue
+        )
+        
+        heading_style = ParagraphStyle(
+            'CustomHeading',
+            parent=styles['Heading2'],
+            fontSize=12,
+            spaceAfter=12,
+            spaceBefore=12,
+            textColor=colors.darkblue
+        )
+        
+        normal_style = styles['Normal']
+        normal_style.fontSize = 10
+        normal_style.spaceAfter = 6
+        
+        # Title
+        story.append(Paragraph("INCIDENT REPORT", title_style))
+        story.append(Spacer(1, 20))
+        
+        # Reporter Information Section
+        story.append(Paragraph("Reporter Information", heading_style))
+        
+        reporter_data = [
+            ['Reporter Name:', data.get('reporter_name', 'Anonymous')],
+            ['Job Title:', data.get('reporter_job_title', 'Not provided')],
+            ['Email:', data.get('reporter_email', 'Not provided')],
+            ['Phone:', data.get('reporter_phone', 'Not provided')]
+        ]
+        
+        reporter_table = Table(reporter_data, colWidths=[2*inch, 4*inch])
+        reporter_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ]))
+        story.append(reporter_table)
+        story.append(Spacer(1, 20))
+        
+        # Incident Details Section
+        story.append(Paragraph("Incident Details", heading_style))
+        
+        incident_data = [
+            ['Date/Time:', data.get('incident_datetime', 'Not provided')],
+            ['Incident Type:', data.get('incident_type', 'Not provided')],
+            ['Location:', data.get('location', 'Not provided')],
+            ['Description:', data.get('incident_description', 'Not provided')]
+        ]
+        
+        incident_table = Table(incident_data, colWidths=[2*inch, 4*inch])
+        incident_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ]))
+        story.append(incident_table)
+        story.append(Spacer(1, 20))
+        
+        # Names and Identifiers Section
+        story.append(Paragraph("Names and Identifiers of Those Involved", heading_style))
+        story.append(Paragraph(data.get('persons_involved', 'Not provided'), normal_style))
+        story.append(Spacer(1, 20))
+        
+        # Corrective Actions Section - PROMINENT POSITION
+        corrective_actions_value = data.get('corrective_actions', '').strip()
+        story.append(Paragraph("Corrective Actions", heading_style))
+        story.append(Paragraph(corrective_actions_value if corrective_actions_value else 'No corrective actions specified', normal_style))
+        story.append(Spacer(1, 20))
+        
+        # Additional Details Section
+        story.append(Paragraph("Additional Incident Details", heading_style))
+        
+        additional_fields = [
+            ('Nature of Threats, Physical Acts, or Weapons Used:', 'threats_weapons'),
+            ('Medical Treatment:', 'medical_treatment'),
+            ('Law Enforcement Contact:', 'law_enforcement'),
+            ('Security or Other Intervention:', 'security_intervention'),
+            ('How the Incident Was Responded To:', 'incident_response'),
+            ('Contributing Factors:', 'contributing_factors')
+        ]
+        
+        for field_name, field_key in additional_fields:
+            value = data.get(field_key, '').strip()
+            if value:  # Only include fields that have content
+                story.append(Paragraph(field_name, ParagraphStyle(
+                    'FieldLabel',
+                    parent=normal_style,
+                    fontName='Helvetica-Bold',
+                    fontSize=10,
+                    spaceAfter=3
+                )))
+                story.append(Paragraph(value, normal_style))
+                story.append(Spacer(1, 8))
+        
+        # Footer
+        story.append(Spacer(1, 30))
+        story.append(Paragraph(f"Report generated on: {datetime.now().strftime('%B %d, %Y at %I:%M %p')}", 
+                             ParagraphStyle('Footer', parent=normal_style, fontSize=8, 
+                                           textColor=colors.grey, alignment=1)))
+        
+        # Build PDF
+        doc.build(story)
+        buffer.seek(0)
+        
+        logger.info("PDF modal incident report generated successfully")
+        
+        # Return PDF as response
+        return send_file(
+            buffer,
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name=f'incident_report_modal_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error generating modal PDF: {str(e)}")
+        return jsonify({'success': False, 'message': 'Error generating modal PDF'}), 500
 
 # Error handlers
 @app.errorhandler(404)

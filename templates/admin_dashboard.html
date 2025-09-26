@@ -47,10 +47,26 @@
     <div class="modal-content">
         <div class="modal-header">
             <h2 id="modalTitle">Incident Details</h2>
-            <span class="close">&times;</span>
+            <div class="modal-header-buttons">
+                <button id="saveModalBtn" class="btn btn-primary btn-sm">Save</button>
+                <button id="exportPdfModalBtn" class="btn btn-outline btn-sm" disabled>Export PDF</button>
+                <span class="close">&times;</span>
+            </div>
         </div>
         <div class="modal-body">
             <div class="incident-details">
+                <!-- Corrective Actions Section - Moved to Top -->
+                <div class="detail-section">
+                    <h4 style="margin-bottom: 1rem; color: var(--primary-color); font-size: 1rem;">Corrective Actions</h4>
+                    <div class="detail-row">
+                        <div class="detail-label">Corrective Actions</div>
+                        <div class="corrective-actions-container">
+                            <textarea id="modalCorrectiveActions" class="form-textarea corrective-actions-textarea" 
+                                      placeholder="Enter corrective actions taken or recommended to prevent recurrence..."></textarea>
+                        </div>
+                    </div>
+                </div>
+                
                 <!-- Reporter Information -->
                 <div class="detail-section">
                     <h4 style="margin-bottom: 1rem; color: var(--primary-color); font-size: 1rem;">Reporter Information</h4>
@@ -125,10 +141,6 @@
                         <div class="detail-value scrollable" id="modalContributingFactors"></div>
                     </div>
                     <div class="detail-row">
-                        <div class="detail-label">Corrective Actions</div>
-                        <div class="detail-value scrollable" id="modalCorrectiveActions"></div>
-                    </div>
-                    <div class="detail-row">
                         <div class="detail-label">Submitted</div>
                         <div class="detail-value" id="modalSubmitted"></div>
                     </div>
@@ -144,7 +156,7 @@
     /* Modal styles */
     .modal {
         position: fixed;
-        z-index: 1000;
+        z-index: 9999;
         left: 0;
         top: 0;
         width: 100%;
@@ -188,6 +200,12 @@
         background-color: var(--background-color);
         border-radius: 0.5rem 0.5rem 0 0;
         flex-shrink: 0; /* Prevent header from shrinking */
+    }
+
+    .modal-header-buttons {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
     }
 
     .modal-header h2 {
@@ -341,6 +359,39 @@
         flex-wrap: wrap;
     }
 
+    /* Corrective Actions Styles */
+    .corrective-actions-container {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .corrective-actions-textarea {
+        min-height: 120px;
+        resize: vertical;
+        font-family: inherit;
+        font-size: 0.875rem;
+        line-height: 1.5;
+    }
+
+    .corrective-actions-buttons {
+        display: flex;
+        gap: 0.5rem;
+        justify-content: flex-end;
+    }
+
+    .btn-sm {
+        padding: 0.375rem 0.75rem;
+        font-size: 0.75rem;
+        border-radius: 0.25rem;
+    }
+
+    .btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        pointer-events: none;
+    }
+
     /* Responsive modal */
     @media (max-width: 768px) {
         .modal-content {
@@ -463,6 +514,7 @@ document.addEventListener('DOMContentLoaded', function() {
             <table class="table">
                 <thead>
                     <tr>
+                        <th>Incident #</th>
                         <th>Reporter</th>
                         <th>Type</th>
                         <th>Incident Date/Time</th>
@@ -472,7 +524,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 </thead>
                 <tbody>
                     ${incidents.map(incident => `
-                        <tr class="incident-row" data-incident='${JSON.stringify(incident)}' style="cursor: pointer;">
+                        <tr class="incident-row" data-incident-id="${incident.id}" style="cursor: pointer;">
+                            <td><strong>#${incident.id}</strong></td>
                             <td>${escapeHtml(incident.reporter_name)}</td>
                             <td><span class="badge incident-type-badge">${escapeHtml(incident.incident_type)}</span></td>
                             <td>${formatDateTime(incident.incident_datetime)}</td>
@@ -542,6 +595,31 @@ document.addEventListener('DOMContentLoaded', function() {
     // Modal functionality
     const modal = document.getElementById('incidentModal');
     const closeBtn = document.querySelector('.close');
+    const exportPdfModalBtn = document.getElementById('exportPdfModalBtn');
+    const saveModalBtn = document.getElementById('saveModalBtn');
+    const correctiveActionsTextarea = document.getElementById('modalCorrectiveActions');
+    
+    // Track unsaved changes
+    let hasUnsavedChanges = false;
+    let originalCorrectiveActions = '';
+    
+    // Function to update button states based on unsaved changes
+    function updateButtonStates() {
+        if (hasUnsavedChanges) {
+            exportPdfModalBtn.disabled = true;
+            saveModalBtn.disabled = false;
+        } else {
+            exportPdfModalBtn.disabled = false;
+            saveModalBtn.disabled = true;
+        }
+    }
+    
+    // Function to check for unsaved changes
+    function checkForUnsavedChanges() {
+        const currentValue = correctiveActionsTextarea.value.trim();
+        hasUnsavedChanges = currentValue !== originalCorrectiveActions;
+        updateButtonStates();
+    }
     
     // Close modal when clicking the X button
     closeBtn.addEventListener('click', function() {
@@ -562,8 +640,141 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
+    // Track changes in corrective actions textarea
+    correctiveActionsTextarea.addEventListener('input', checkForUnsavedChanges);
+    correctiveActionsTextarea.addEventListener('paste', function() {
+        setTimeout(checkForUnsavedChanges, 10); // Small delay to allow paste to complete
+    });
+    
+    // Save button functionality
+    saveModalBtn.addEventListener('click', async function() {
+        const incidentId = correctiveActionsTextarea.getAttribute('data-incident-id');
+        const correctiveActions = correctiveActionsTextarea.value.trim();
+        
+        if (!incidentId) {
+            alert('Error: Incident ID not found');
+            return;
+        }
+        
+        const originalText = saveModalBtn.textContent;
+        saveModalBtn.textContent = 'Saving...';
+        saveModalBtn.disabled = true;
+        
+        try {
+            const response = await fetch(`/admin/incidents/${incidentId}/corrective-actions`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    corrective_actions: correctiveActions
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                // Update the incidents array with the new data
+                const incidentIndex = incidents.findIndex(inc => inc.id == incidentId);
+                if (incidentIndex !== -1) {
+                    incidents[incidentIndex].corrective_actions = correctiveActions;
+                }
+                
+                // Update original value and reset unsaved changes
+                originalCorrectiveActions = correctiveActions;
+                hasUnsavedChanges = false;
+                updateButtonStates();
+                
+                // Silent save - no alert popup
+            } else {
+                alert('Error saving corrective actions: ' + result.message);
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('An error occurred while saving corrective actions. Please try again.');
+        } finally {
+            saveModalBtn.textContent = originalText;
+            saveModalBtn.disabled = false;
+        }
+    });
+    
+    // PDF Export functionality for modal
+    exportPdfModalBtn.addEventListener('click', async function() {
+        const originalText = exportPdfModalBtn.textContent;
+        exportPdfModalBtn.textContent = 'Generating...';
+        exportPdfModalBtn.disabled = true;
+        
+        try {
+            // Get the current incident data from the modal
+            const incidentId = document.getElementById('modalCorrectiveActions').getAttribute('data-incident-id');
+            const incidentData = incidents.find(inc => inc.id == incidentId);
+            
+            if (!incidentData) {
+                alert('Error: Incident data not found');
+                return;
+            }
+            
+            // Create form data object
+            const formDataObj = {
+                reporter_name: incidentData.reporter_name || '',
+                reporter_job_title: incidentData.reporter_job_title || '',
+                reporter_email: incidentData.reporter_email || '',
+                reporter_phone: incidentData.reporter_phone || '',
+                incident_datetime: incidentData.incident_datetime || '',
+                incident_type: incidentData.incident_type || '',
+                location: incidentData.location || '',
+                incident_description: incidentData.incident_description || '',
+                persons_involved: incidentData.persons_involved || '',
+                threats_weapons: incidentData.threats_weapons || '',
+                medical_treatment: incidentData.medical_treatment || '',
+                law_enforcement: incidentData.law_enforcement || '',
+                security_intervention: incidentData.security_intervention || '',
+                incident_response: incidentData.incident_response || '',
+                contributing_factors: incidentData.contributing_factors || '',
+                corrective_actions: document.getElementById('modalCorrectiveActions').value || ''
+            };
+            
+            const response = await fetch('/export_modal_pdf', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(formDataObj)
+            });
+            
+            if (response.ok) {
+                // Create blob from response
+                const blob = await response.blob();
+                
+                // Create download link
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `incident_report_${incidentData.id}_${new Date().toISOString().split('T')[0]}.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                
+                // Silent PDF export - no popup
+            } else {
+                const errorData = await response.json();
+                alert('Error generating PDF: ' + (errorData.message || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('An error occurred while generating the PDF. Please try again.');
+        } finally {
+            exportPdfModalBtn.textContent = originalText;
+            exportPdfModalBtn.disabled = false;
+        }
+    });
+    
     // Function to show incident details in modal
     function showIncidentDetails(incident) {
+        // Update modal title with incident number
+        document.getElementById('modalTitle').textContent = `Incident Details - #${incident.id}`;
+        
         // Reporter information
         document.getElementById('modalReporter').textContent = incident.reporter_name || 'Anonymous';
         document.getElementById('modalJobTitle').textContent = incident.reporter_job_title || 'Not provided';
@@ -584,9 +795,20 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('modalSecurityIntervention').textContent = incident.security_intervention || 'Not provided';
         document.getElementById('modalIncidentResponse').textContent = incident.incident_response || 'Not provided';
         document.getElementById('modalContributingFactors').textContent = incident.contributing_factors || 'Not provided';
-        document.getElementById('modalCorrectiveActions').textContent = incident.corrective_actions || 'Not provided';
+        
+        // Corrective Actions - populate textarea
+        const correctiveActionsTextarea = document.getElementById('modalCorrectiveActions');
+        correctiveActionsTextarea.value = incident.corrective_actions || '';
         
         document.getElementById('modalSubmitted').textContent = formatDateTime(incident.submitted_at);
+        
+        // Store incident ID for saving
+        correctiveActionsTextarea.setAttribute('data-incident-id', incident.id);
+        
+        // Initialize unsaved changes tracking
+        originalCorrectiveActions = incident.corrective_actions || '';
+        hasUnsavedChanges = false;
+        updateButtonStates();
         
         modal.style.display = 'block';
     }
@@ -595,9 +817,23 @@ document.addEventListener('DOMContentLoaded', function() {
     function addTableRowListeners() {
         const rows = document.querySelectorAll('.incident-row');
         rows.forEach(row => {
-            row.addEventListener('click', function() {
-                const incidentData = JSON.parse(this.getAttribute('data-incident'));
-                showIncidentDetails(incidentData);
+            row.addEventListener('click', function(event) {
+                event.preventDefault();
+                event.stopPropagation();
+                try {
+                    const incidentId = parseInt(this.getAttribute('data-incident-id'));
+                    
+                    // Find the incident data from the incidents array
+                    const incidentData = incidents.find(inc => inc.id === incidentId);
+                    
+                    if (incidentData) {
+                        showIncidentDetails(incidentData);
+                    } else {
+                        console.error('Incident not found with ID:', incidentId);
+                    }
+                } catch (error) {
+                    console.error('Error finding incident data:', error);
+                }
             });
         });
     }
