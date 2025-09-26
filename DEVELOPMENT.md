@@ -25,8 +25,8 @@ python app.py
 ```
 
 ### 3. Access the Application
-- **Main Application**: http://localhost:5000
-- **Admin Dashboard**: http://localhost:5000/admin/login
+- **Main Application**: http://localhost:5002
+- **Admin Dashboard**: http://localhost:5002/admin/login
 - **Default Admin Credentials**: 
   - Username: `admin`
   - Password: `admin123`
@@ -62,7 +62,7 @@ incident-reporting/
 ## Available Routes
 
 - `GET /` - Incident reporting form
-- `POST /submit_incident` - Submit incident report
+- `POST /submit_incident` - Submit incident report (with email notifications)
 - `POST /export_incident_pdf` - Export form data as PDF
 - `GET /admin/login` - Admin login page
 - `POST /admin/login` - Admin authentication
@@ -70,6 +70,9 @@ incident-reporting/
 - `GET /admin/incidents` - Get incidents (API)
 - `GET /admin/export` - Export incidents to CSV
 - `GET /admin/users` - User management
+- `GET /admin/email-config` - Email configuration page
+- `POST /admin/email-config/save` - Save email configuration
+- `POST /admin/email-config/test` - Test email configuration
 - Various admin user management endpoints
 
 ## Database Commands
@@ -95,10 +98,17 @@ The `.env` file contains:
 
 ## Testing the PDF Export Feature
 
-1. Go to http://localhost:5000
+1. Go to http://localhost:5002
 2. Fill out the incident form with some test data
 3. Click "Export as PDF" button
 4. The PDF should download automatically
+
+## Testing the Email Feature
+
+1. Configure email settings in admin panel
+2. Submit a test incident report
+3. Check that email notification is received
+4. Verify all incident details are included
 
 ## Troubleshooting
 

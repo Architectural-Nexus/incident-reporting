@@ -6,6 +6,7 @@ from io import StringIO, BytesIO
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from flask_mail import Mail, Message
 from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 from reportlab.lib.pagesizes import letter
@@ -33,7 +34,17 @@ app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key-change-this'
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///incidents.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+# Email configuration
+app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER', 'smtp.gmail.com')
+app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT', 587))
+app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS', 'True').lower() == 'true'
+app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME', '')
+app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD', '')
+app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER', '')
+app.config['MAIL_RECIPIENTS'] = os.getenv('MAIL_RECIPIENTS', '')
+
 db = SQLAlchemy(app)
+mail = Mail(app)
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'admin_login'
@@ -99,9 +110,133 @@ class Incident(db.Model):
             'submitted_at': self.submitted_at.strftime('%Y-%m-%d %H:%M')
         }
 
+class EmailConfig(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    mail_server = db.Column(db.String(100), nullable=False, default='smtp.gmail.com')
+    mail_port = db.Column(db.Integer, nullable=False, default=587)
+    mail_use_tls = db.Column(db.Boolean, nullable=False, default=True)
+    mail_username = db.Column(db.String(120), nullable=False)
+    mail_password = db.Column(db.String(120), nullable=False)
+    mail_default_sender = db.Column(db.String(120), nullable=False)
+    mail_recipients = db.Column(db.Text, nullable=False)  # Comma-separated list
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def get_recipients_list(self):
+        """Convert comma-separated recipients string to list"""
+        if not self.mail_recipients:
+            return []
+        return [email.strip() for email in self.mail_recipients.split(',') if email.strip()]
+
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
+
+# Helper Functions
+def send_incident_notification(incident):
+    """Send email notification when an incident is reported"""
+    try:
+        email_config = EmailConfig.query.first()
+        
+        if not email_config or not email_config.is_active:
+            logger.info("Email notifications disabled or not configured")
+            return False
+        
+        # Update Flask-Mail config with database values
+        app.config['MAIL_SERVER'] = email_config.mail_server
+        app.config['MAIL_PORT'] = email_config.mail_port
+        app.config['MAIL_USE_TLS'] = email_config.mail_use_tls
+        app.config['MAIL_USERNAME'] = email_config.mail_username
+        app.config['MAIL_PASSWORD'] = email_config.mail_password
+        app.config['MAIL_DEFAULT_SENDER'] = email_config.mail_default_sender
+        
+        # Create new Mail instance with updated config
+        notification_mail = Mail(app)
+        
+        # Format incident datetime
+        incident_datetime_str = incident.incident_datetime.strftime('%B %d, %Y at %I:%M %p')
+        
+        # Create email message
+        msg = Message(
+            subject=f'New Incident Report #{incident.id} - {incident.incident_type}',
+            sender=email_config.mail_default_sender,
+            recipients=email_config.get_recipients_list()
+        )
+        
+        # Email body
+        msg.body = f"""
+NEW INCIDENT REPORT
+
+Incident ID: #{incident.id}
+Reported By: {incident.reporter_name}
+Date/Time: {incident_datetime_str}
+Type: {incident.incident_type}
+Location: {incident.location}
+
+DESCRIPTION:
+{incident.incident_description}
+
+PERSONS INVOLVED:
+{incident.persons_involved}
+
+ADDITIONAL DETAILS:
+"""
+        
+        # Add optional fields if they have content
+        if incident.threats_weapons:
+            msg.body += f"\nThreats/Weapons: {incident.threats_weapons}"
+        
+        if incident.medical_treatment:
+            msg.body += f"\nMedical Treatment: {incident.medical_treatment}"
+        
+        if incident.law_enforcement:
+            msg.body += f"\nLaw Enforcement: {incident.law_enforcement}"
+        
+        if incident.security_intervention:
+            msg.body += f"\nSecurity Intervention: {incident.security_intervention}"
+        
+        if incident.incident_response:
+            msg.body += f"\nIncident Response: {incident.incident_response}"
+        
+        if incident.contributing_factors:
+            msg.body += f"\nContributing Factors: {incident.contributing_factors}"
+        
+        if incident.corrective_actions:
+            msg.body += f"\nCorrective Actions: {incident.corrective_actions}"
+        
+        msg.body += f"""
+
+REPORTER CONTACT INFORMATION:
+"""
+        
+        if incident.reporter_job_title:
+            msg.body += f"Job Title: {incident.reporter_job_title}\n"
+        
+        if incident.reporter_email:
+            msg.body += f"Email: {incident.reporter_email}\n"
+        
+        if incident.reporter_phone:
+            msg.body += f"Phone: {incident.reporter_phone}\n"
+        
+        msg.body += f"""
+
+Submitted: {incident.submitted_at.strftime('%B %d, %Y at %I:%M %p')}
+
+---
+This is an automated notification from the Incident Reporting System.
+Please log in to the admin dashboard to view full details and manage this incident.
+        """
+        
+        # Send email
+        notification_mail.send(msg)
+        
+        logger.info(f"Email notification sent for incident #{incident.id}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error sending email notification for incident #{incident.id}: {str(e)}")
+        return False
 
 # Routes
 @app.route('/')
@@ -175,6 +310,13 @@ def submit_incident():
         db.session.commit()
 
         logger.info(f"New incident reported: ID={incident.id}, Location={location}, Reporter={reporter_name}")
+        
+        # Send email notification
+        email_sent = send_incident_notification(incident)
+        if email_sent:
+            logger.info(f"Email notification sent for incident #{incident.id}")
+        else:
+            logger.warning(f"Failed to send email notification for incident #{incident.id}")
         
         return jsonify({'success': True, 'message': 'Incident report submitted successfully'})
 
@@ -509,6 +651,107 @@ def delete_user(user_id):
     
     return redirect(url_for('admin_users'))
 
+@app.route('/admin/email-config')
+@login_required
+def admin_email_config():
+    """Email configuration page"""
+    email_config = EmailConfig.query.first()
+    return render_template('admin_email_config.html', email_config=email_config)
+
+@app.route('/admin/email-config/save', methods=['POST'])
+@login_required
+def save_email_config():
+    """Save email configuration"""
+    try:
+        email_config = EmailConfig.query.first()
+        
+        if not email_config:
+            email_config = EmailConfig()
+        
+        email_config.mail_server = request.form.get('mail_server', '').strip()
+        email_config.mail_port = int(request.form.get('mail_port', 587))
+        email_config.mail_use_tls = request.form.get('mail_use_tls') == 'on'
+        email_config.mail_username = request.form.get('mail_username', '').strip()
+        email_config.mail_password = request.form.get('mail_password', '').strip()
+        email_config.mail_default_sender = request.form.get('mail_default_sender', '').strip()
+        email_config.mail_recipients = request.form.get('mail_recipients', '').strip()
+        email_config.is_active = request.form.get('is_active') == 'on'
+        
+        # Validate required fields
+        if not email_config.mail_server or not email_config.mail_username or not email_config.mail_password:
+            flash('Mail server, username, and password are required', 'error')
+            return redirect(url_for('admin_email_config'))
+        
+        if email_config.is_active and not email_config.mail_recipients:
+            flash('Recipients are required when email notifications are active', 'error')
+            return redirect(url_for('admin_email_config'))
+        
+        if email_config.id is None:
+            db.session.add(email_config)
+        
+        db.session.commit()
+        
+        logger.info(f"Admin {current_user.username} updated email configuration")
+        flash('Email configuration saved successfully', 'success')
+        
+    except Exception as e:
+        logger.error(f"Error saving email configuration: {str(e)}")
+        db.session.rollback()
+        flash('Error saving email configuration', 'error')
+    
+    return redirect(url_for('admin_email_config'))
+
+@app.route('/admin/email-config/test', methods=['POST'])
+@login_required
+def test_email_config():
+    """Test email configuration by sending a test email"""
+    try:
+        email_config = EmailConfig.query.first()
+        
+        if not email_config or not email_config.is_active:
+            return jsonify({'success': False, 'message': 'Email configuration not found or not active'}), 400
+        
+        # Temporarily update Flask-Mail config with database values
+        app.config['MAIL_SERVER'] = email_config.mail_server
+        app.config['MAIL_PORT'] = email_config.mail_port
+        app.config['MAIL_USE_TLS'] = email_config.mail_use_tls
+        app.config['MAIL_USERNAME'] = email_config.mail_username
+        app.config['MAIL_PASSWORD'] = email_config.mail_password
+        app.config['MAIL_DEFAULT_SENDER'] = email_config.mail_default_sender
+        
+        # Create new Mail instance with updated config
+        test_mail = Mail(app)
+        
+        # Send test email
+        msg = Message(
+            subject='Test Email - Incident Reporting System',
+            sender=email_config.mail_default_sender,
+            recipients=email_config.get_recipients_list()
+        )
+        msg.body = f"""
+This is a test email from the Work Place Violence Reporting Server.
+
+Configuration Details:
+- Server: {email_config.mail_server}:{email_config.mail_port}
+- TLS: {'Enabled' if email_config.mail_use_tls else 'Disabled'}
+- Sender: {email_config.mail_default_sender}
+- Recipients: {email_config.mail_recipients}
+
+If you receive this email, your email configuration is working correctly.
+
+Sent by: {current_user.username}
+Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+        """
+        
+        test_mail.send(msg)
+        
+        logger.info(f"Test email sent successfully by admin {current_user.username}")
+        return jsonify({'success': True, 'message': 'Test email sent successfully'})
+        
+    except Exception as e:
+        logger.error(f"Error sending test email: {str(e)}")
+        return jsonify({'success': False, 'message': f'Error sending test email: {str(e)}'}), 500
+
 @app.route('/export_incident_pdf', methods=['POST'])
 def export_incident_pdf():
     """Export incident form data as PDF"""
@@ -743,4 +986,4 @@ if __name__ == '__main__':
             logger.info("Default admin user created on startup: admin/admin123")
             print('Default admin user created: admin/admin123')
     
-    app.run(debug=True, host='0.0.0.0', port=5001) 
+    app.run(debug=True, host='0.0.0.0', port=5002) 

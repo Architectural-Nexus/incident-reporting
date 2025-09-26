@@ -24,8 +24,8 @@ fi
 
 echo ""
 echo "🌐 Starting Flask development server..."
-echo "📍 Application will be available at: http://localhost:5001"
-echo "🔐 Admin login: http://localhost:5001/admin/login"
+echo "📍 Application will be available at: http://localhost:5002"
+echo "🔐 Admin login: http://localhost:5002/admin/login"
 echo "👤 Default admin credentials: admin / admin123"
 echo ""
 echo "Press Ctrl+C to stop the server"
