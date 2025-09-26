@@ -159,14 +159,13 @@ def send_incident_notification(incident):
         
         # Create email message
         msg = Message(
-            subject=f'New Incident Report #{incident.id} - {incident.incident_type}',
+            subject='Notice: A Work Place Incident Has Been Reported',
             sender=email_config.mail_default_sender,
             recipients=email_config.get_recipients_list()
         )
         
         # Email body
-        msg.body = f"""
-NEW INCIDENT REPORT
+        msg.body = f"""A new Work Place Incident has been reported. Please follow the link below to see the report. Note: if you are outside the office you will need to be connected via VPN to see the report.
 
 Incident ID: #{incident.id}
 Reported By: {incident.reporter_name}
@@ -174,58 +173,13 @@ Date/Time: {incident_datetime_str}
 Type: {incident.incident_type}
 Location: {incident.location}
 
-DESCRIPTION:
-{incident.incident_description}
-
-PERSONS INVOLVED:
-{incident.persons_involved}
-
-ADDITIONAL DETAILS:
-"""
-        
-        # Add optional fields if they have content
-        if incident.threats_weapons:
-            msg.body += f"\nThreats/Weapons: {incident.threats_weapons}"
-        
-        if incident.medical_treatment:
-            msg.body += f"\nMedical Treatment: {incident.medical_treatment}"
-        
-        if incident.law_enforcement:
-            msg.body += f"\nLaw Enforcement: {incident.law_enforcement}"
-        
-        if incident.security_intervention:
-            msg.body += f"\nSecurity Intervention: {incident.security_intervention}"
-        
-        if incident.incident_response:
-            msg.body += f"\nIncident Response: {incident.incident_response}"
-        
-        if incident.contributing_factors:
-            msg.body += f"\nContributing Factors: {incident.contributing_factors}"
-        
-        if incident.corrective_actions:
-            msg.body += f"\nCorrective Actions: {incident.corrective_actions}"
-        
-        msg.body += f"""
-
-REPORTER CONTACT INFORMATION:
-"""
-        
-        if incident.reporter_job_title:
-            msg.body += f"Job Title: {incident.reporter_job_title}\n"
-        
-        if incident.reporter_email:
-            msg.body += f"Email: {incident.reporter_email}\n"
-        
-        if incident.reporter_phone:
-            msg.body += f"Phone: {incident.reporter_phone}\n"
-        
-        msg.body += f"""
+To view the full incident report, please log in to the admin dashboard:
+http://localhost:5002/admin/login
 
 Submitted: {incident.submitted_at.strftime('%B %d, %Y at %I:%M %p')}
 
 ---
-This is an automated notification from the Incident Reporting System.
-Please log in to the admin dashboard to view full details and manage this incident.
+This is an automated notification from the Work Place Violence Reporting Server.
         """
         
         # Send email
@@ -306,19 +260,20 @@ def submit_incident():
             corrective_actions=corrective_actions
         )
         
+        # Save incident to database first
         db.session.add(incident)
         db.session.commit()
 
         logger.info(f"New incident reported: ID={incident.id}, Location={location}, Reporter={reporter_name}")
         
-        # Send email notification
+        # Send email notification after successful database save
         email_sent = send_incident_notification(incident)
         if email_sent:
             logger.info(f"Email notification sent for incident #{incident.id}")
         else:
             logger.warning(f"Failed to send email notification for incident #{incident.id}")
         
-        return jsonify({'success': True, 'message': 'Incident report submitted successfully'})
+        return jsonify({'success': True, 'message': 'Incident report submitted successfully and email notification sent'})
 
     except Exception as e:
         logger.error(f"Error submitting incident: {str(e)}")

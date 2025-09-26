@@ -107,8 +107,8 @@ The `.env` file contains:
 
 1. Configure email settings in admin panel
 2. Submit a test incident report
-3. Check that email notification is received
-4. Verify all incident details are included
+3. Check that email notification is received with subject "Notice: A Work Place Incident Has Been Reported"
+4. Verify the email contains the VPN access note and admin dashboard link
 
 ## Troubleshooting
 

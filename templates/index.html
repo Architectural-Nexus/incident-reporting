@@ -262,7 +262,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const result = await response.json();
             
             if (result.success) {
-                showMessage(result.message, 'success');
+                showMessage('Incident report submitted successfully! Data saved to database and email notification sent.', 'success');
                 form.reset();
                 // Reset datetime to current time
                 const now = new Date();
