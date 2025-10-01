@@ -136,7 +136,7 @@ def load_user(user_id):
     return User.query.get(int(user_id))
 
 # Helper Functions
-def send_incident_notification(incident, anonymous_email=None):
+def send_incident_notification(incident, reporter_email=None):
     """Send email notification when an incident is reported"""
     try:
         email_config = EmailConfig.query.first()
@@ -188,31 +188,51 @@ This is an automated notification from the Work Place Violence Reporting Server.
         notification_mail.send(msg)
         logger.info(f"Incident notification email sent for incident #{incident.id}")
         
-        # If anonymous email is provided, send confirmation email to reporter
-        if anonymous_email:
+        # If reporter email is provided, send confirmation email to reporter
+        if reporter_email:
             confirmation_msg = Message(
                 subject='Incident Report Confirmation',
                 sender=email_config.mail_default_sender,
-                recipients=[anonymous_email]
+                recipients=[reporter_email]
             )
             
-            confirmation_msg.body = f"""Thank you for reporting the workplace incident. Your report has been received and will be reviewed by the appropriate personnel.
+            # Determine if this was submitted anonymously
+            is_anonymous = incident.reporter_email is None
+            
+            if is_anonymous:
+                confirmation_msg.body = f"""Your incident report has been submitted successfully.
 
 Incident ID: #{incident.id}
 Date/Time: {incident_datetime_str}
 Type: {incident.incident_type}
 Location: {incident.location}
 
-Your report has been submitted anonymously as requested. Your email address has not been recorded in the incident report.
+• Your contact information was not recorded because you chose to submit the form anonymously.
+• Because you chose to submit the form anonymously, Management at Architectural Nexus will not have any way to get in touch with you.
 
 Submitted: {incident.submitted_at.strftime('%B %d, %Y at %I:%M %p')}
 
 ---
 This is an automated confirmation from the Work Place Violence Reporting Server.
-            """
+                """
+            else:
+                confirmation_msg.body = f"""Thank you for reporting the workplace incident. Your report has been received and will be reviewed by the appropriate personnel.
+
+Incident ID: #{incident.id}
+Date/Time: {incident_datetime_str}
+Type: {incident.incident_type}
+Location: {incident.location}
+
+Your contact information has been recorded with the incident report for follow-up purposes.
+
+Submitted: {incident.submitted_at.strftime('%B %d, %Y at %I:%M %p')}
+
+---
+This is an automated confirmation from the Work Place Violence Reporting Server.
+                """
             
             notification_mail.send(confirmation_msg)
-            logger.info(f"Confirmation email sent to anonymous reporter: {anonymous_email}")
+            logger.info(f"Confirmation email sent to reporter: {reporter_email}")
         
         return True
         
@@ -241,9 +261,9 @@ def submit_incident():
         
         # If user wants to remain anonymous, don't store their email in the database
         # but keep it for sending confirmation email
-        anonymous_email = reporter_email if remain_anonymous else None
+        confirmation_email = reporter_email  # Always keep email for confirmation if provided
         if remain_anonymous:
-            reporter_email = None
+            reporter_email = None  # Don't store in database
         
         # Get incident details
         incident_datetime_str = request.form.get('incident_datetime')
@@ -313,7 +333,7 @@ def submit_incident():
         logger.info(f"New incident reported: ID={incident.id}, Location={location}, Reporter={reporter_name}")
         
         # Send email notification after successful database save
-        email_sent = send_incident_notification(incident, anonymous_email)
+        email_sent = send_incident_notification(incident, confirmation_email)
         if email_sent:
             logger.info(f"Email notification sent for incident #{incident.id}")
         else:
