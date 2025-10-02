@@ -355,11 +355,15 @@
                     <a href="{{ url_for('index') }}" class="nav-link">Report Incident</a>
                     {% if current_user.is_authenticated %}
                         <a href="{{ url_for('admin_dashboard') }}" class="nav-link">Dashboard</a>
-                        <a href="{{ url_for('admin_users') }}" class="nav-link">Users</a>
-                        <a href="{{ url_for('admin_email_config') }}" class="nav-link">Email Config</a>
+                        {% if current_user.can_manage_users() %}
+                            <a href="{{ url_for('admin_users') }}" class="nav-link">Users</a>
+                        {% endif %}
+                        {% if current_user.can_manage_email_config() %}
+                            <a href="{{ url_for('admin_email_config') }}" class="nav-link">Email Config</a>
+                        {% endif %}
                         <a href="{{ url_for('admin_logout') }}" class="nav-link">Logout</a>
                     {% else %}
-                        <a href="{{ url_for('admin_login') }}" class="nav-link">Admin Login</a>
+                        <a href="{{ url_for('admin_login') }}" class="nav-link">Login</a>
                     {% endif %}
                 </nav>
             </div>

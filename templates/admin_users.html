@@ -160,6 +160,13 @@
                 <label for="email" class="form-label">Email Address</label>
                 <input type="email" id="email" name="email" class="form-input" placeholder="user@company.com" required>
             </div>
+            <div class="form-group" style="flex: 1; min-width: 200px;">
+                <label for="role" class="form-label">Role</label>
+                <select id="role" name="role" class="form-input" required>
+                    <option value="incident_manager">Incident Manager</option>
+                    <option value="master_admin">Master Admin</option>
+                </select>
+            </div>
             <div style="display: flex; align-items: end; padding-top: 2.15rem;">
                 <button type="submit" class="btn btn-primary">Add User</button>
             </div>
@@ -175,6 +182,7 @@
                     <tr>
                         <th>Username</th>
                         <th>Email</th>
+                        <th>Role</th>
                         <th>Status</th>
                         <th>Created</th>
                         <th>Actions</th>
@@ -182,9 +190,16 @@
                 </thead>
                 <tbody>
                     {% for user in users %}
-                        <tr class="user-row" data-user='{"id": {{ user.id }}, "username": "{{ user.username }}", "email": "{{ user.email or '' }}", "is_active": {{ user.is_active|lower }}, "created_at": "{{ user.created_at.strftime('%Y-%m-%d %H:%M') }}", "is_current_user": {{ (user.id == current_user.id)|lower }}}' style="cursor: pointer;">
+                        <tr class="user-row" data-user='{"id": {{ user.id }}, "username": "{{ user.username }}", "email": "{{ user.email or '' }}", "role": "{{ user.role }}", "is_active": {{ user.is_active|lower }}, "created_at": "{{ user.created_at.strftime('%Y-%m-%d %H:%M') }}", "is_current_user": {{ (user.id == current_user.id)|lower }}}' style="cursor: pointer;">
                             <td>{{ user.username }}</td>
                             <td>{{ user.email or 'Not set' }}</td>
+                            <td>
+                                {% if user.role == 'master_admin' %}
+                                    <span class="badge badge-primary">Master Admin</span>
+                                {% else %}
+                                    <span class="badge badge-secondary">Incident Manager</span>
+                                {% endif %}
+                            </td>
                             <td>
                                 {% if user.is_active %}
                                     <span class="badge badge-success">Active</span>
@@ -223,6 +238,10 @@
                     <div class="detail-value" id="modalUsername"></div>
                 </div>
                 <div class="detail-row">
+                    <div class="detail-label">Role</div>
+                    <div class="detail-value" id="modalRole"></div>
+                </div>
+                <div class="detail-row">
                     <div class="detail-label">Status</div>
                     <div class="detail-value" id="modalStatus"></div>
                 </div>
@@ -250,6 +269,23 @@
                         </div>
                         <div style="display: flex; align-items: end; padding-top: 2.15rem;">
                             <button type="submit" class="btn btn-primary">Change</button>
+                        </div>
+                    </form>
+                </div>
+                
+                <!-- Change Role Section -->
+                <div class="action-section">
+                    <h4 style="margin-bottom: 0.5rem; color: var(--text-primary);">Change Role</h4>
+                    <form id="changeRoleForm" style="display: flex; gap: 0.5rem; align-items: start; flex-wrap: wrap;">
+                        <div class="form-group" style="flex: 1; min-width: 200px;">
+                            <label for="newRole" class="form-label">New Role</label>
+                            <select id="newRole" name="new_role" class="form-input" required>
+                                <option value="incident_manager">Incident Manager</option>
+                                <option value="master_admin">Master Admin</option>
+                            </select>
+                        </div>
+                        <div style="display: flex; align-items: end; padding-top: 2.15rem;">
+                            <button type="submit" class="btn btn-primary">Change Role</button>
                         </div>
                     </form>
                 </div>
@@ -324,15 +360,20 @@ document.addEventListener('DOMContentLoaded', function() {
         currentUser = user;
         
         document.getElementById('modalUsername').textContent = user.username;
+        document.getElementById('modalRole').textContent = user.role === 'master_admin' ? 'Master Admin' : 'Incident Manager';
         document.getElementById('modalStatus').textContent = user.is_active ? 'Active' : 'Inactive';
         document.getElementById('modalCreated').textContent = user.created_at;
         
         // Update button text and visibility based on user status
         toggleStatusBtn.textContent = user.is_active ? 'Deactivate User' : 'Activate User';
         
+        // Set current role in dropdown
+        document.getElementById('newRole').value = user.role;
+        
         // Disable actions for current user
         const isCurrentUser = user.is_current_user;
         changePasswordForm.style.display = isCurrentUser ? 'none' : 'flex';
+        document.getElementById('changeRoleForm').style.display = isCurrentUser ? 'none' : 'flex';
         toggleStatusBtn.style.display = isCurrentUser ? 'none' : 'inline-block';
         deleteUserBtn.style.display = isCurrentUser ? 'none' : 'inline-block';
         
@@ -388,6 +429,53 @@ document.addEventListener('DOMContentLoaded', function() {
             } catch (error) {
                 console.error('Error:', error);
                 alert('Error changing password');
+            }
+        }
+    });
+    
+    // Change role form submission
+    const changeRoleForm = document.getElementById('changeRoleForm');
+    changeRoleForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        if (!currentUser) return;
+        
+        const newRole = document.getElementById('newRole').value;
+        if (!newRole) {
+            alert('Please select a role');
+            return;
+        }
+        
+        if (newRole === currentUser.role) {
+            alert('User already has this role');
+            return;
+        }
+        
+        if (confirm(`Are you sure you want to change the role for ${currentUser.username} to ${newRole === 'master_admin' ? 'Master Admin' : 'Incident Manager'}?`)) {
+            try {
+                const response = await fetch(`/admin/users/${currentUser.id}/change-role`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ new_role: newRole })
+                });
+                
+                if (response.ok) {
+                    alert('Role changed successfully');
+                    // Update the current user object
+                    currentUser.role = newRole;
+                    // Update the role display
+                    document.getElementById('modalRole').textContent = newRole === 'master_admin' ? 'Master Admin' : 'Incident Manager';
+                    // Refresh the page to update the table
+                    window.location.reload();
+                } else {
+                    const result = await response.json();
+                    alert('Error: ' + (result.message || 'Failed to change role'));
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error changing role');
             }
         }
     });

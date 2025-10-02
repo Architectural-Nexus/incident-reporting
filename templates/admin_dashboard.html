@@ -722,6 +722,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 hasUnsavedChanges = false;
                 updateButtonStates();
                 
+                // Close the modal after successful save
+                setTimeout(() => {
+                    const modalElement = document.getElementById('incidentModal');
+                    if (modalElement) {
+                        modalElement.style.display = 'none';
+                    }
+                }, 100);
+                
                 // Silent save - no alert popup
             } else {
                 alert('Error saving corrective actions: ' + result.message);

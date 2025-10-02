@@ -4,6 +4,7 @@ import logging
 import secrets
 from datetime import datetime, timedelta
 from io import StringIO, BytesIO
+from functools import wraps
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
@@ -50,6 +51,40 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'admin_login'
 
+# Permission Decorators
+def master_admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return redirect(url_for('admin_login'))
+        if not current_user.can_manage_users():
+            flash('Access denied. Master admin privileges required.', 'error')
+            return redirect(url_for('admin_dashboard'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def incident_manager_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return redirect(url_for('admin_login'))
+        if not current_user.can_manage_incidents():
+            flash('Access denied. Incident manager privileges required.', 'error')
+            return redirect(url_for('admin_login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def email_config_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return redirect(url_for('admin_login'))
+        if not current_user.can_manage_email_config():
+            flash('Access denied. Master admin privileges required for email configuration.', 'error')
+            return redirect(url_for('admin_dashboard'))
+        return f(*args, **kwargs)
+    return decorated_function
+
 # Database Models
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -59,12 +94,31 @@ class User(UserMixin, db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     is_active = db.Column(db.Boolean, default=True)
     must_change_password = db.Column(db.Boolean, default=False)
+    role = db.Column(db.String(20), default='incident_manager')  # 'master_admin' or 'incident_manager'
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
 
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+
+    def is_master_admin(self):
+        return self.role == 'master_admin'
+
+    def is_incident_manager(self):
+        return self.role == 'incident_manager'
+
+    def can_manage_users(self):
+        return self.is_master_admin()
+
+    def can_manage_email_config(self):
+        return self.is_master_admin()
+
+    def can_view_dashboard(self):
+        return self.is_master_admin() or self.is_incident_manager()
+
+    def can_manage_incidents(self):
+        return self.is_master_admin() or self.is_incident_manager()
 
     def __repr__(self):
         return f'<User {self.username}>'
@@ -666,13 +720,13 @@ def admin_logout():
     return redirect(url_for('admin_login'))
 
 @app.route('/admin/dashboard')
-@login_required
+@incident_manager_required
 def admin_dashboard():
     """Admin dashboard to view incidents"""
     return render_template('admin_dashboard.html')
 
 @app.route('/admin/incidents')
-@login_required
+@incident_manager_required
 def get_incidents():
     """API endpoint to get incidents with filtering and sorting"""
     try:
@@ -746,7 +800,7 @@ def get_incidents():
         return jsonify({'success': False, 'message': 'Error retrieving incidents'}), 500
 
 @app.route('/admin/export')
-@login_required
+@incident_manager_required
 def export_incidents():
     """Export incidents to CSV"""
     try:
@@ -845,19 +899,20 @@ def export_incidents():
         return redirect(url_for('admin_dashboard'))
 
 @app.route('/admin/users')
-@login_required
+@master_admin_required
 def admin_users():
     """Admin users management page"""
     users = User.query.all()
     return render_template('admin_users.html', users=users)
 
 @app.route('/admin/users/add', methods=['POST'])
-@login_required
+@master_admin_required
 def add_user():
     """Add new admin user"""
     try:
         username = request.form.get('username', '').strip()
         email = request.form.get('email', '').strip() or None
+        role = request.form.get('role', 'incident_manager').strip()
 
         if not username:
             flash('Username is required')
@@ -865,6 +920,10 @@ def add_user():
 
         if not email:
             flash('Email address is required for new users')
+            return redirect(url_for('admin_users'))
+
+        if role not in ['master_admin', 'incident_manager']:
+            flash('Invalid role selected')
             return redirect(url_for('admin_users'))
 
         if User.query.filter_by(username=username).first():
@@ -879,7 +938,7 @@ def add_user():
         temporary_password = generate_temporary_password()
         
         # Create user with temporary password and must_change_password flag
-        user = User(username=username, email=email, must_change_password=True)
+        user = User(username=username, email=email, role=role, must_change_password=True)
         user.set_password(temporary_password)
         db.session.add(user)
         db.session.commit()
@@ -902,7 +961,7 @@ def add_user():
     return redirect(url_for('admin_users'))
 
 @app.route('/admin/users/<int:user_id>/toggle', methods=['POST'])
-@login_required
+@master_admin_required
 def toggle_user(user_id):
     """Toggle user active status"""
     try:
@@ -928,7 +987,7 @@ def toggle_user(user_id):
     return redirect(url_for('admin_users'))
 
 @app.route('/admin/users/<int:user_id>/change-password', methods=['POST'])
-@login_required
+@master_admin_required
 def change_user_password(user_id):
     """Change user password"""
     try:
@@ -958,8 +1017,43 @@ def change_user_password(user_id):
         db.session.rollback()
         return jsonify({'success': False, 'message': 'Error changing password'}), 500
 
+@app.route('/admin/users/<int:user_id>/change-role', methods=['POST'])
+@master_admin_required
+def change_user_role(user_id):
+    """Change user role"""
+    try:
+        user = User.query.get_or_404(user_id)
+        
+        # Prevent changing own role
+        if user.id == current_user.id:
+            return jsonify({'success': False, 'message': 'Cannot change your own role'}), 400
+        
+        data = request.get_json()
+        new_role = data.get('new_role', '').strip()
+        
+        if not new_role:
+            return jsonify({'success': False, 'message': 'New role is required'}), 400
+        
+        if new_role not in ['master_admin', 'incident_manager']:
+            return jsonify({'success': False, 'message': 'Invalid role selected'}), 400
+        
+        if new_role == user.role:
+            return jsonify({'success': False, 'message': 'User already has this role'}), 400
+        
+        old_role = user.role
+        user.role = new_role
+        db.session.commit()
+        
+        logger.info(f"Admin {current_user.username} changed role for user {user.username} from {old_role} to {new_role}")
+        return jsonify({'success': True, 'message': 'Role changed successfully'})
+        
+    except Exception as e:
+        logger.error(f"Error changing user role: {str(e)}")
+        db.session.rollback()
+        return jsonify({'success': False, 'message': 'Error changing role'}), 500
+
 @app.route('/admin/users/<int:user_id>/delete', methods=['POST'])
-@login_required
+@master_admin_required
 def delete_user(user_id):
     """Delete admin user"""
     try:
@@ -984,14 +1078,14 @@ def delete_user(user_id):
     return redirect(url_for('admin_users'))
 
 @app.route('/admin/email-config')
-@login_required
+@email_config_required
 def admin_email_config():
     """Email configuration page"""
     email_config = EmailConfig.query.first()
     return render_template('admin_email_config.html', email_config=email_config)
 
 @app.route('/admin/email-config/save', methods=['POST'])
-@login_required
+@email_config_required
 def save_email_config():
     """Save email configuration"""
     try:
@@ -1034,7 +1128,7 @@ def save_email_config():
     return redirect(url_for('admin_email_config'))
 
 @app.route('/admin/email-config/test', methods=['POST'])
-@login_required
+@email_config_required
 def test_email_config():
     """Test email configuration by sending a test email"""
     try:
@@ -1085,7 +1179,7 @@ Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         return jsonify({'success': False, 'message': f'Error sending test email: {str(e)}'}), 500
 
 @app.route('/admin/incidents/<int:incident_id>/corrective-actions', methods=['POST'])
-@login_required
+@incident_manager_required
 def update_corrective_actions(incident_id):
     """Update corrective actions for a specific incident"""
     try:
@@ -1485,10 +1579,21 @@ if __name__ == '__main__':
     with app.app_context():
         db.create_all()
         
+        # Migrate existing users to have roles
+        existing_users = User.query.filter(User.role.is_(None)).all()
+        for user in existing_users:
+            if user.username == 'admin':
+                user.role = 'master_admin'
+            else:
+                user.role = 'incident_manager'
+        if existing_users:
+            db.session.commit()
+            logger.info(f"Migrated {len(existing_users)} users to have roles")
+        
         # Ensure default admin user exists
         default_admin = User.query.filter_by(username='admin').first()
         if not default_admin:
-            default_admin = User(username='admin', email='admin@archnexus.com')
+            default_admin = User(username='admin', email='admin@archnexus.com', role='master_admin')
             default_admin.set_password('admin123')
             db.session.add(default_admin)
             db.session.commit()
