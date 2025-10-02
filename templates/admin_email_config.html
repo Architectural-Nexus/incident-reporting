@@ -63,9 +63,14 @@
 
             <div class="form-group">
                 <label for="mail_password" class="form-label">Password/App Password <span style="color: var(--danger-color);">*</span></label>
-                <input type="password" id="mail_password" name="mail_password" class="form-input" 
-                       value="{{ email_config.mail_password if email_config else '' }}"
-                       placeholder="Your email password or app password" required>
+                <div style="position: relative;">
+                    <input type="password" id="mail_password" name="mail_password" class="form-input" 
+                           value="{{ email_config.mail_password if email_config else '' }}"
+                           placeholder="Your email password or app password" required style="padding-right: 3rem;">
+                    <button type="button" onclick="togglePassword('mail_password')" style="position: absolute; right: 0.75rem; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: var(--text-secondary); font-size: 1rem;" title="Show/Hide Password">
+                        <span id="mail_password-toggle">👁️</span>
+                    </button>
+                </div>
                 <small style="color: var(--text-secondary); font-size: 0.875rem;">
                     For Gmail, use an App Password instead of your regular password
                 </small>
@@ -126,6 +131,21 @@
 
 {% block extra_js %}
 <script>
+function togglePassword(fieldId) {
+    const passwordField = document.getElementById(fieldId);
+    const toggleButton = document.getElementById(fieldId + '-toggle');
+    
+    if (passwordField.type === 'password') {
+        passwordField.type = 'text';
+        toggleButton.textContent = '🙈';
+        toggleButton.title = 'Hide Password';
+    } else {
+        passwordField.type = 'password';
+        toggleButton.textContent = '👁️';
+        toggleButton.title = 'Show Password';
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     const testEmailBtn = document.getElementById('testEmailBtn');
     const messageContainer = document.getElementById('messageContainer');

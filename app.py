@@ -1,7 +1,8 @@
 import os
 import csv
 import logging
-from datetime import datetime
+import secrets
+from datetime import datetime, timedelta
 from io import StringIO, BytesIO
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file
 from flask_sqlalchemy import SQLAlchemy
@@ -53,15 +54,34 @@ login_manager.login_view = 'admin_login'
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=True)
     password_hash = db.Column(db.String(120), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     is_active = db.Column(db.Boolean, default=True)
+    must_change_password = db.Column(db.Boolean, default=False)
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
 
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+
+    def __repr__(self):
+        return f'<User {self.username}>'
+
+class PasswordResetToken(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    token = db.Column(db.String(100), unique=True, nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    used = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def is_valid(self):
+        return not self.used and datetime.utcnow() < self.expires_at
+
+    def __repr__(self):
+        return f'<PasswordResetToken {self.token}>'
 
 class Incident(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -240,6 +260,172 @@ This is an automated confirmation from the Work Place Violence Reporting Server.
         logger.error(f"Error sending email notification for incident #{incident.id}: {str(e)}")
         return False
 
+def generate_password_reset_token(user):
+    """Generate a secure password reset token for a user"""
+    # Generate a secure random token
+    token = secrets.token_urlsafe(32)
+    
+    # Set expiration time (1 hour from now)
+    expires_at = datetime.utcnow() + timedelta(hours=1)
+    
+    # Create the token record
+    reset_token = PasswordResetToken(
+        user_id=user.id,
+        token=token,
+        expires_at=expires_at
+    )
+    
+    # Invalidate any existing tokens for this user
+    PasswordResetToken.query.filter_by(user_id=user.id, used=False).update({'used': True})
+    
+    # Save the new token
+    db.session.add(reset_token)
+    db.session.commit()
+    
+    return token
+
+def send_password_reset_email(user, token):
+    """Send password reset email to user"""
+    try:
+        email_config = EmailConfig.query.first()
+        
+        if not email_config or not email_config.is_active:
+            logger.info("Email notifications disabled or not configured")
+            return False
+        
+        # Update Flask-Mail config with database values
+        app.config['MAIL_SERVER'] = email_config.mail_server
+        app.config['MAIL_PORT'] = email_config.mail_port
+        app.config['MAIL_USE_TLS'] = email_config.mail_use_tls
+        app.config['MAIL_USERNAME'] = email_config.mail_username
+        app.config['MAIL_PASSWORD'] = email_config.mail_password
+        app.config['MAIL_DEFAULT_SENDER'] = email_config.mail_default_sender
+        
+        # Create new Mail instance with updated config
+        reset_mail = Mail(app)
+        
+        # Create reset URL
+        reset_url = f"http://localhost:5002/admin/reset-password/{token}"
+        
+        # Create email message
+        msg = Message(
+            subject='Password Reset Request - Incident Reporting System',
+            sender=email_config.mail_default_sender,
+            recipients=[user.email]
+        )
+        
+        msg.body = f"""Hello {user.username},
+
+You have requested a password reset for your Incident Reporting System admin account.
+
+To reset your password, please click the link below:
+{reset_url}
+
+This link will expire in 1 hour for security reasons.
+
+If you did not request this password reset, please ignore this email and your password will remain unchanged.
+
+---
+This is an automated message from the Work Place Violence Reporting Server.
+        """
+        
+        reset_mail.send(msg)
+        logger.info(f"Password reset email sent to {user.email}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error sending password reset email to {user.email}: {str(e)}")
+        return False
+
+def generate_temporary_password():
+    """Generate a secure temporary password"""
+    # Generate a password with letters, numbers, and special characters
+    import string
+    import random
+    
+    # Use a mix of characters for security
+    chars = string.ascii_letters + string.digits + "!@#$%"
+    password = ''.join(random.choice(chars) for _ in range(12))
+    
+    # Ensure it has at least one of each type
+    if not any(c.islower() for c in password):
+        password = password[:-1] + random.choice(string.ascii_lowercase)
+    if not any(c.isupper() for c in password):
+        password = password[:-1] + random.choice(string.ascii_uppercase)
+    if not any(c.isdigit() for c in password):
+        password = password[:-1] + random.choice(string.digits)
+    
+    return password
+
+def send_welcome_email(user, temporary_password):
+    """Send welcome email to new user with credentials"""
+    try:
+        email_config = EmailConfig.query.first()
+        
+        if not email_config or not email_config.is_active:
+            logger.info("Email notifications disabled or not configured")
+            return False
+        
+        # Update Flask-Mail config with database values
+        app.config['MAIL_SERVER'] = email_config.mail_server
+        app.config['MAIL_PORT'] = email_config.mail_port
+        app.config['MAIL_USE_TLS'] = email_config.mail_use_tls
+        app.config['MAIL_USERNAME'] = email_config.mail_username
+        app.config['MAIL_PASSWORD'] = email_config.mail_password
+        app.config['MAIL_DEFAULT_SENDER'] = email_config.mail_default_sender
+        
+        # Create new Mail instance with updated config
+        welcome_mail = Mail(app)
+        
+        # Create login URL
+        login_url = "http://localhost:5002/admin/login"
+        
+        # Create email message
+        msg = Message(
+            subject='Welcome to Incident Reporting System - Your Account Has Been Created',
+            sender=email_config.mail_default_sender,
+            recipients=[user.email]
+        )
+        
+        msg.body = f"""Hello {user.username},
+
+Welcome to the Incident Reporting System! Your admin account has been created.
+
+Your login credentials:
+Username: {user.username}
+Temporary Password: {temporary_password}
+
+To access the system:
+1. Go to: {login_url}
+2. Log in with your username and temporary password
+3. You will be required to change your password on first login
+
+Important Security Notes:
+• This is a temporary password that must be changed on first login
+• Keep your login credentials secure
+• Do not share your password with others
+• Contact your administrator if you have any issues
+
+The Incident Reporting System allows you to:
+• View and manage incident reports
+• Export reports to PDF and CSV
+• Manage other admin users
+• Configure email settings
+
+If you did not expect this account creation, please contact your administrator immediately.
+
+---
+This is an automated message from the Work Place Violence Reporting Server.
+        """
+        
+        welcome_mail.send(msg)
+        logger.info(f"Welcome email sent to {user.email} for user: {user.username}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error sending welcome email to {user.email}: {str(e)}")
+        return False
+
 # Routes
 @app.route('/')
 def index():
@@ -358,12 +544,118 @@ def admin_login():
         if user and user.check_password(password):
             login_user(user)
             logger.info(f"Admin login successful: {username}")
+            
+            # Check if user must change password
+            if user.must_change_password:
+                return redirect(url_for('change_password_required'))
+            
             return redirect(url_for('admin_dashboard'))
         else:
             logger.warning(f"Failed login attempt for username: {username}")
             flash('Invalid username or password')
     
     return render_template('admin_login.html')
+
+@app.route('/admin/change-password-required', methods=['GET', 'POST'])
+@login_required
+def change_password_required():
+    """Force password change for new users"""
+    if request.method == 'POST':
+        new_password = request.form.get('password')
+        confirm_password = request.form.get('confirm_password')
+        
+        if not new_password or len(new_password) < 6:
+            flash('Password must be at least 6 characters long')
+            return render_template('change_password_required.html')
+        
+        if new_password != confirm_password:
+            flash('Passwords do not match')
+            return render_template('change_password_required.html')
+        
+        # Update user password and clear must_change_password flag
+        current_user.set_password(new_password)
+        current_user.must_change_password = False
+        db.session.commit()
+        
+        logger.info(f"User {current_user.username} changed password successfully")
+        flash('Password changed successfully! You can now access the system.')
+        return redirect(url_for('admin_dashboard'))
+    
+    return render_template('change_password_required.html')
+
+@app.route('/admin/forgot-password', methods=['GET', 'POST'])
+def forgot_password():
+    """Handle password reset requests"""
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        
+        if not username:
+            flash('Please enter your username')
+            return render_template('forgot_password.html')
+        
+        user = User.query.filter_by(username=username, is_active=True).first()
+        
+        if user and user.email:
+            # Generate reset token
+            token = generate_password_reset_token(user)
+            
+            # Send reset email
+            if send_password_reset_email(user, token):
+                flash('Password reset instructions have been sent to your email address.')
+                logger.info(f"Password reset requested for user: {username}")
+            else:
+                flash('Failed to send password reset email. Please contact your administrator.')
+                logger.error(f"Failed to send password reset email for user: {username}")
+        else:
+            # Don't reveal whether user exists or has email
+            flash('If an account with that username exists and has an email address, password reset instructions have been sent.')
+            logger.info(f"Password reset requested for non-existent user or user without email: {username}")
+        
+        return redirect(url_for('admin_login'))
+    
+    return render_template('forgot_password.html')
+
+@app.route('/admin/reset-password/<token>', methods=['GET', 'POST'])
+def reset_password(token):
+    """Handle password reset with token"""
+    reset_token = PasswordResetToken.query.filter_by(token=token).first()
+    
+    if not reset_token or not reset_token.is_valid():
+        flash('Invalid or expired password reset link.')
+        return redirect(url_for('admin_login'))
+    
+    user = User.query.get(reset_token.user_id)
+    
+    if request.method == 'POST':
+        new_password = request.form.get('password', '').strip()
+        confirm_password = request.form.get('confirm_password', '').strip()
+        
+        if not new_password:
+            flash('Please enter a new password')
+            return render_template('reset_password.html', token=token)
+        
+        if new_password != confirm_password:
+            flash('Passwords do not match')
+            return render_template('reset_password.html', token=token)
+        
+        if len(new_password) < 6:
+            flash('Password must be at least 6 characters long')
+            return render_template('reset_password.html', token=token)
+        
+        # Update password
+        user.set_password(new_password)
+        
+        # Mark token as used
+        reset_token.used = True
+        
+        db.session.commit()
+        
+        flash('Your password has been reset successfully. Please log in with your new password.')
+        logger.info(f"Password reset completed for user: {user.username}")
+        
+        return redirect(url_for('admin_login'))
+    
+    return render_template('reset_password.html', token=token)
 
 @app.route('/admin/logout')
 @login_required
@@ -565,28 +857,47 @@ def add_user():
     """Add new admin user"""
     try:
         username = request.form.get('username', '').strip()
-        password = request.form.get('password', '').strip()
-        
-        if not username or not password:
-            flash('Username and password are required')
+        email = request.form.get('email', '').strip() or None
+
+        if not username:
+            flash('Username is required')
             return redirect(url_for('admin_users'))
-        
+
+        if not email:
+            flash('Email address is required for new users')
+            return redirect(url_for('admin_users'))
+
         if User.query.filter_by(username=username).first():
             flash('Username already exists')
             return redirect(url_for('admin_users'))
+
+        if User.query.filter_by(email=email).first():
+            flash('Email address already exists')
+            return redirect(url_for('admin_users'))
+
+        # Generate temporary password
+        temporary_password = generate_temporary_password()
         
-        user = User(username=username)
-        user.set_password(password)
+        # Create user with temporary password and must_change_password flag
+        user = User(username=username, email=email, must_change_password=True)
+        user.set_password(temporary_password)
         db.session.add(user)
         db.session.commit()
+
+        # Send welcome email
+        email_sent = send_welcome_email(user, temporary_password)
         
-        logger.info(f"Admin {current_user.username} added new user: {username}")
-        flash('User added successfully')
-        
+        if email_sent:
+            logger.info(f"Admin {current_user.username} added new user: {username} with welcome email sent")
+            flash(f'User {username} added successfully. Welcome email sent to {email}')
+        else:
+            logger.warning(f"Admin {current_user.username} added new user: {username} but welcome email failed to send")
+            flash(f'User {username} added successfully, but welcome email could not be sent. Please contact the user directly.')
+
     except Exception as e:
         logger.error(f"Error adding user: {str(e)}")
         db.session.rollback()
-        flash('Error adding user')
+        flash('An error occurred while adding the user')
     
     return redirect(url_for('admin_users'))
 
@@ -1124,7 +1435,7 @@ def init_db():
     # Create default admin user if it doesn't exist
     default_admin = User.query.filter_by(username='admin').first()
     if not default_admin:
-        default_admin = User(username='admin')
+        default_admin = User(username='admin', email='admin@archnexus.com')
         default_admin.set_password('admin123')
         db.session.add(default_admin)
         db.session.commit()
@@ -1132,6 +1443,7 @@ def init_db():
         print('Database initialized!')
         print('Default admin user created:')
         print('  Username: admin')
+        print('  Email: admin@archnexus.com')
         print('  Password: admin123')
         print('  ⚠️  Please change this password after first login!')
     else:
@@ -1176,7 +1488,7 @@ if __name__ == '__main__':
         # Ensure default admin user exists
         default_admin = User.query.filter_by(username='admin').first()
         if not default_admin:
-            default_admin = User(username='admin')
+            default_admin = User(username='admin', email='admin@archnexus.com')
             default_admin.set_password('admin123')
             db.session.add(default_admin)
             db.session.commit()

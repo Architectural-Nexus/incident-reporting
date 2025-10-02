@@ -15,15 +15,41 @@
 
             <div class="form-group">
                 <label for="password" class="form-label">Password</label>
-                <input type="password" id="password" name="password" class="form-input" required>
+                <div style="position: relative;">
+                    <input type="password" id="password" name="password" class="form-input" required style="padding-right: 3rem;">
+                    <button type="button" onclick="togglePassword('password')" style="position: absolute; right: 0.75rem; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: var(--text-secondary); font-size: 1rem;" title="Show/Hide Password">
+                        <span id="password-toggle">👁️</span>
+                    </button>
+                </div>
             </div>
 
             <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">Login</button>
         </form>
+        
+        <div style="margin-top: 1rem; text-align: center;">
+            <a href="{{ url_for('forgot_password') }}" class="nav-link">Forgot Password?</a>
+        </div>
         
         <div style="margin-top: 1.5rem; text-align: center;">
             <a href="{{ url_for('index') }}" class="nav-link">← Back to Incident Report</a>
         </div>
     </div>
 </div>
+
+<script>
+function togglePassword(fieldId) {
+    const passwordField = document.getElementById(fieldId);
+    const toggleButton = document.getElementById(fieldId + '-toggle');
+    
+    if (passwordField.type === 'password') {
+        passwordField.type = 'text';
+        toggleButton.textContent = '🙈';
+        toggleButton.title = 'Hide Password';
+    } else {
+        passwordField.type = 'password';
+        toggleButton.textContent = '👁️';
+        toggleButton.title = 'Show Password';
+    }
+}
+</script>
 {% endblock %} 
