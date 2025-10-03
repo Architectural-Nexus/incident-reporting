@@ -65,6 +65,15 @@
                                       placeholder="Enter corrective actions taken or recommended to prevent recurrence..."></textarea>
                         </div>
                     </div>
+                    <div class="detail-row" style="margin-top: 0.75rem;">
+                        <div class="detail-label">Notification</div>
+                        <div class="notification-container" style="display: flex; align-items: center; gap: 0.5rem;">
+                            <input type="checkbox" id="notifyReporterCheckbox" class="form-checkbox">
+                            <label for="notifyReporterCheckbox" class="form-checkbox-label" style="font-size: 0.875rem; color: var(--text-secondary);">
+                                Notify reporter of corrective actions update
+                            </label>
+                        </div>
+                    </div>
                 </div>
                 
                 <!-- Two Column Layout -->
@@ -473,6 +482,30 @@
             width: 100%;
         }
     }
+
+    /* Checkbox styles */
+    .form-checkbox {
+        width: 1rem;
+        height: 1rem;
+        margin: 0;
+        cursor: pointer;
+        accent-color: var(--primary-color);
+    }
+
+    .form-checkbox:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .form-checkbox-label {
+        cursor: pointer;
+        user-select: none;
+    }
+
+    .form-checkbox-label:has(+ .form-checkbox:disabled) {
+        cursor: not-allowed;
+        opacity: 0.5;
+    }
 </style>
 {% endblock %}
 
@@ -687,6 +720,7 @@ document.addEventListener('DOMContentLoaded', function() {
     saveModalBtn.addEventListener('click', async function() {
         const incidentId = correctiveActionsTextarea.getAttribute('data-incident-id');
         const correctiveActions = correctiveActionsTextarea.value.trim();
+        const notifyReporter = document.getElementById('notifyReporterCheckbox').checked;
         
         if (!incidentId) {
             alert('Error: Incident ID not found');
@@ -704,7 +738,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    corrective_actions: correctiveActions
+                    corrective_actions: correctiveActions,
+                    notify_reporter: notifyReporter
                 })
             });
             
@@ -845,6 +880,18 @@ document.addEventListener('DOMContentLoaded', function() {
         // Corrective Actions - populate textarea
         const correctiveActionsTextarea = document.getElementById('modalCorrectiveActions');
         correctiveActionsTextarea.value = incident.corrective_actions || '';
+        
+        // Handle notification checkbox
+        const notifyReporterCheckbox = document.getElementById('notifyReporterCheckbox');
+        const hasReporterEmail = incident.reporter_email && incident.reporter_email.trim() !== '';
+        
+        if (hasReporterEmail) {
+            notifyReporterCheckbox.disabled = false;
+            notifyReporterCheckbox.checked = false; // Default to unchecked
+        } else {
+            notifyReporterCheckbox.disabled = true;
+            notifyReporterCheckbox.checked = false;
+        }
         
         document.getElementById('modalSubmitted').textContent = formatDateTime(incident.submitted_at);
         

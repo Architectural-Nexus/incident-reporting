@@ -1,0 +1,20 @@
+[Unit]
+Description=Incident Reporting System
+After=network.target
+
+[Service]
+Type=exec
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/incident-reporting
+Environment=PATH=/opt/incident-reporting/venv/bin
+ExecStart=/opt/incident-reporting/venv/bin/gunicorn --bind unix:/opt/incident-reporting/incident-reporting.sock --workers 3 --timeout 120 --max-requests 1000 --max-requests-jitter 100 wsgi:application
+ExecReload=/bin/kill -s HUP $MAINPID
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=incident-reporting
+
+[Install]
+WantedBy=multi-user.target

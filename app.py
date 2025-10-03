@@ -210,6 +210,128 @@ def load_user(user_id):
     return User.query.get(int(user_id))
 
 # Helper Functions
+def send_corrective_actions_notification(incident, action_type="updated"):
+    """Send email notification when corrective actions are modified"""
+    try:
+        email_config = EmailConfig.query.first()
+        
+        if not email_config or not email_config.is_active:
+            logger.warning("Email configuration not active, skipping corrective actions notification")
+            return False
+        
+        # Create a new Mail instance with current config
+        notification_mail = Mail(app)
+        
+        # Update Flask-Mail configuration with database values
+        app.config['MAIL_SERVER'] = email_config.mail_server
+        app.config['MAIL_PORT'] = email_config.mail_port
+        app.config['MAIL_USE_TLS'] = email_config.mail_use_tls
+        app.config['MAIL_USERNAME'] = email_config.mail_username
+        app.config['MAIL_PASSWORD'] = email_config.mail_password
+        
+        # Create new Mail instance with updated config
+        notification_mail = Mail(app)
+        
+        # Prepare email content
+        subject = f"Corrective Actions {action_type.title()} - Incident #{incident.id}"
+        
+        body = f"""A new Work Place Incident corrective actions have been {action_type}.
+
+Incident Details:
+- Incident ID: #{incident.id}
+- Incident Type: {incident.incident_type}
+- Submitted: {incident.submitted_at.strftime('%Y-%m-%d %H:%M:%S')}
+- Reporter: {incident.reporter_name or 'Anonymous'}
+
+Corrective Actions:
+{incident.corrective_actions or 'No corrective actions specified'}
+
+Please follow the link below to see the full report.
+Note: if you are outside the office you will need to be connected via VPN to see the report.
+
+Link: {request.url_root}admin/login
+"""
+        
+        msg = Message(
+            subject=subject,
+            recipients=[email_config.admin_email],
+            body=body,
+            sender=email_config.mail_username
+        )
+        
+        notification_mail.send(msg)
+        logger.info(f"Corrective actions notification email sent to {email_config.admin_email} for incident #{incident.id}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error sending corrective actions notification email: {str(e)}")
+        return False
+
+def send_reporter_corrective_actions_notification(incident):
+    """Send email notification to reporter when corrective actions are updated"""
+    try:
+        email_config = EmailConfig.query.first()
+        
+        if not email_config or not email_config.is_active:
+            logger.warning("Email configuration not active, skipping reporter notification")
+            return False
+        
+        if not incident.reporter_email:
+            logger.warning("No reporter email available for notification")
+            return False
+        
+        # Create a new Mail instance with current config
+        reporter_mail = Mail(app)
+        
+        # Update Flask-Mail configuration with database values
+        app.config['MAIL_SERVER'] = email_config.mail_server
+        app.config['MAIL_PORT'] = email_config.mail_port
+        app.config['MAIL_USE_TLS'] = email_config.mail_use_tls
+        app.config['MAIL_USERNAME'] = email_config.mail_username
+        app.config['MAIL_PASSWORD'] = email_config.mail_password
+        
+        # Create new Mail instance with updated config
+        reporter_mail = Mail(app)
+        
+        # Prepare email content
+        subject = f"Corrective Actions Update - Incident #{incident.id}"
+        
+        body = f"""Dear {incident.reporter_name or 'Reporter'},
+
+We wanted to inform you that corrective actions have been updated for the incident you reported.
+
+Incident Details:
+- Incident ID: #{incident.id}
+- Incident Type: {incident.incident_type}
+- Submitted: {incident.submitted_at.strftime('%Y-%m-%d %H:%M:%S')}
+
+Corrective Actions:
+{incident.corrective_actions or 'No corrective actions specified'}
+
+Thank you for reporting this incident. Your report helps us maintain a safe workplace environment.
+
+If you have any questions or additional information about this incident, please contact your supervisor or the appropriate department.
+
+Best regards,
+Work Place Violence Reporting Team
+Architectural Nexus
+"""
+        
+        msg = Message(
+            subject=subject,
+            recipients=[incident.reporter_email],
+            body=body,
+            sender=email_config.mail_username
+        )
+        
+        reporter_mail.send(msg)
+        logger.info(f"Reporter notification email sent to {incident.reporter_email} for incident #{incident.id}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error sending reporter notification email: {str(e)}")
+        return False
+
 def send_incident_notification(incident, reporter_email=None):
     """Send email notification when an incident is reported"""
     try:
@@ -1187,11 +1309,19 @@ def update_corrective_actions(incident_id):
         data = request.get_json()
         
         corrective_actions = data.get('corrective_actions', '').strip()
+        notify_reporter = data.get('notify_reporter', False)
         
         incident.corrective_actions = corrective_actions if corrective_actions else None
         db.session.commit()
         
         logger.info(f"Admin {current_user.username} updated corrective actions for incident #{incident_id}")
+        
+        # Send email notification to admin
+        send_corrective_actions_notification(incident, "updated")
+        
+        # Send email notification to reporter if requested and email exists
+        if notify_reporter and incident.reporter_email:
+            send_reporter_corrective_actions_notification(incident)
         
         return jsonify({
             'success': True, 
