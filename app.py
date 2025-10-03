@@ -1310,8 +1310,26 @@ def update_corrective_actions(incident_id):
         
         corrective_actions = data.get('corrective_actions', '').strip()
         notify_reporter = data.get('notify_reporter', False)
+        add_audit_trail = data.get('add_audit_trail', False)
         
-        incident.corrective_actions = corrective_actions if corrective_actions else None
+        if add_audit_trail and corrective_actions:
+            # Get current timestamp and username
+            from datetime import datetime
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            username = current_user.username
+            
+            # Create audit trail entry
+            audit_entry = f"[{username} - {timestamp}]:\n{corrective_actions}"
+            
+            # Append to existing corrective actions or create new
+            if incident.corrective_actions:
+                incident.corrective_actions = f"{incident.corrective_actions}\n\n{audit_entry}"
+            else:
+                incident.corrective_actions = audit_entry
+        else:
+            # Direct update (for backward compatibility)
+            incident.corrective_actions = corrective_actions if corrective_actions else None
+        
         db.session.commit()
         
         logger.info(f"Admin {current_user.username} updated corrective actions for incident #{incident_id}")

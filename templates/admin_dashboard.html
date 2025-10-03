@@ -58,13 +58,25 @@
                 <!-- Corrective Actions Section - Full Width at Top -->
                 <div class="detail-section full-width">
                     <h4 style="margin-bottom: 1rem; color: var(--primary-color); font-size: 1rem;">Corrective Actions</h4>
-                    <div class="detail-row">
-                        <div class="detail-label">Corrective Actions</div>
-                        <div class="corrective-actions-container">
-                            <textarea id="modalCorrectiveActions" class="form-textarea corrective-actions-textarea" 
-                                      placeholder="Enter corrective actions taken or recommended to prevent recurrence..."></textarea>
+                    
+                    <!-- Audit Trail Display -->
+                    <div class="detail-row" id="auditTrailRow" style="display: none;">
+                        <div class="detail-label">Previous Actions</div>
+                        <div class="audit-trail-container">
+                            <div id="auditTrailDisplay" class="audit-trail-display" style="background-color: var(--background-color); padding: 0.75rem; border-radius: 0.375rem; border: 1px solid var(--border-color); font-size: 0.875rem; color: var(--text-secondary); max-height: 200px; overflow-y: auto;"></div>
                         </div>
                     </div>
+                    
+                    <!-- New Corrective Actions Input -->
+                    <div class="detail-row">
+                        <div class="detail-label">Add New Corrective Actions</div>
+                        <div class="corrective-actions-container">
+                            <textarea id="modalCorrectiveActions" class="form-textarea corrective-actions-textarea" 
+                                      placeholder="Enter new corrective actions..."></textarea>
+                        </div>
+                    </div>
+                    
+                    <!-- Notification Checkbox -->
                     <div class="detail-row" style="margin-top: 0.75rem;">
                         <div class="detail-label">Notification</div>
                         <div class="notification-container" style="display: flex; align-items: center; gap: 0.5rem;">
@@ -719,11 +731,16 @@ document.addEventListener('DOMContentLoaded', function() {
     // Save button functionality
     saveModalBtn.addEventListener('click', async function() {
         const incidentId = correctiveActionsTextarea.getAttribute('data-incident-id');
-        const correctiveActions = correctiveActionsTextarea.value.trim();
+        const newCorrectiveActions = correctiveActionsTextarea.value.trim();
         const notifyReporter = document.getElementById('notifyReporterCheckbox').checked;
         
         if (!incidentId) {
             alert('Error: Incident ID not found');
+            return;
+        }
+        
+        if (!newCorrectiveActions) {
+            alert('Please enter corrective actions before saving');
             return;
         }
         
@@ -732,15 +749,23 @@ document.addEventListener('DOMContentLoaded', function() {
         saveModalBtn.disabled = true;
         
         try {
+            // Get current timestamp and username
+            const timestamp = new Date().toLocaleString();
+            const username = '{{ current_user.username }}'; // This will be replaced by the server
+            
+            // Prepare the data to send
+            const dataToSend = {
+                corrective_actions: newCorrectiveActions,
+                notify_reporter: notifyReporter,
+                add_audit_trail: true
+            };
+            
             const response = await fetch(`/admin/incidents/${incidentId}/corrective-actions`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({
-                    corrective_actions: correctiveActions,
-                    notify_reporter: notifyReporter
-                })
+                body: JSON.stringify(dataToSend)
             });
             
             const result = await response.json();
@@ -749,11 +774,23 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Update the incidents array with the new data
                 const incidentIndex = incidents.findIndex(inc => inc.id == incidentId);
                 if (incidentIndex !== -1) {
-                    incidents[incidentIndex].corrective_actions = correctiveActions;
+                    incidents[incidentIndex].corrective_actions = result.corrective_actions;
+                }
+                
+                // Clear the textarea and refresh audit trail
+                correctiveActionsTextarea.value = '';
+                const auditTrailDisplay = document.getElementById('auditTrailDisplay');
+                const auditTrailRow = document.getElementById('auditTrailRow');
+                
+                if (result.corrective_actions && result.corrective_actions.trim()) {
+                    auditTrailDisplay.textContent = result.corrective_actions;
+                    auditTrailRow.style.display = 'block';
+                } else {
+                    auditTrailRow.style.display = 'none';
                 }
                 
                 // Update original value and reset unsaved changes
-                originalCorrectiveActions = correctiveActions;
+                originalCorrectiveActions = '';
                 hasUnsavedChanges = false;
                 updateButtonStates();
                 
@@ -877,9 +914,21 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('modalIncidentResponse').textContent = incident.incident_response || 'Not provided';
         document.getElementById('modalContributingFactors').textContent = incident.contributing_factors || 'Not provided';
         
-        // Corrective Actions - populate textarea
+        // Corrective Actions - populate textarea and audit trail
         const correctiveActionsTextarea = document.getElementById('modalCorrectiveActions');
-        correctiveActionsTextarea.value = incident.corrective_actions || '';
+        const auditTrailRow = document.getElementById('auditTrailRow');
+        const auditTrailDisplay = document.getElementById('auditTrailDisplay');
+        
+        // Clear the textarea for new input
+        correctiveActionsTextarea.value = '';
+        
+        // Show audit trail if there are existing corrective actions
+        if (incident.corrective_actions && incident.corrective_actions.trim()) {
+            auditTrailRow.style.display = 'block';
+            auditTrailDisplay.textContent = incident.corrective_actions;
+        } else {
+            auditTrailRow.style.display = 'none';
+        }
         
         // Handle notification checkbox
         const notifyReporterCheckbox = document.getElementById('notifyReporterCheckbox');
