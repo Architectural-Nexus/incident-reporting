@@ -28,10 +28,10 @@
             <div class="form-group">
                 <label for="mail_port" class="form-label">Port <span style="color: var(--danger-color);">*</span></label>
                 <input type="number" id="mail_port" name="mail_port" class="form-input" 
-                       value="{{ email_config.mail_port if email_config else 587 }}"
-                       placeholder="587" required>
+                       value="{{ email_config.mail_port if email_config else 25 }}"
+                       placeholder="25" required>
                 <small style="color: var(--text-secondary); font-size: 0.875rem;">
-                    Common ports: 587 (TLS), 465 (SSL), 25 (unsecured)
+                    Common ports: 25 (relay, no auth), 587 (TLS), 465 (SSL)
                 </small>
             </div>
 
@@ -52,27 +52,27 @@
             <h3 style="margin-bottom: 1rem; color: var(--text-primary); font-size: 1.1rem;">Authentication</h3>
             
             <div class="form-group">
-                <label for="mail_username" class="form-label">Email Address <span style="color: var(--danger-color);">*</span></label>
+                <label for="mail_username" class="form-label">Email Address (Optional)</label>
                 <input type="email" id="mail_username" name="mail_username" class="form-input" 
                        value="{{ email_config.mail_username if email_config else '' }}"
-                       placeholder="your-email@gmail.com" required>
+                       placeholder="your-email@gmail.com">
                 <small style="color: var(--text-secondary); font-size: 0.875rem;">
-                    The email address used to authenticate with the SMTP server
+                    Optional: The email address used to authenticate with the SMTP server. Leave blank for relay servers (port 25) that don't require authentication.
                 </small>
             </div>
 
             <div class="form-group">
-                <label for="mail_password" class="form-label">Password/App Password <span style="color: var(--danger-color);">*</span></label>
+                <label for="mail_password" class="form-label">Password/App Password (Optional)</label>
                 <div style="position: relative;">
                     <input type="password" id="mail_password" name="mail_password" class="form-input" 
                            value="{{ email_config.mail_password if email_config else '' }}"
-                           placeholder="Your email password or app password" required style="padding-right: 3rem;">
+                           placeholder="Your email password or app password" style="padding-right: 3rem;">
                     <button type="button" onclick="togglePassword('mail_password')" style="position: absolute; right: 0.75rem; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: var(--text-secondary); font-size: 1rem;" title="Show/Hide Password">
                         <span id="mail_password-toggle">👁️</span>
                     </button>
                 </div>
                 <small style="color: var(--text-secondary); font-size: 0.875rem;">
-                    For Gmail, use an App Password instead of your regular password
+                    Optional: Required only if your SMTP server requires authentication. For Gmail, use an App Password. Leave blank for relay servers (port 25) that don't require authentication.
                 </small>
             </div>
 

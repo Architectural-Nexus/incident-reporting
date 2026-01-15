@@ -38,10 +38,15 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Email configuration
 app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER', 'smtp.gmail.com')
-app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT', 587))
-app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS', 'True').lower() == 'true'
-app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME', '')
-app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD', '')
+app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT', 25))
+app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS', 'False').lower() == 'true'
+# Authentication is optional - only set if provided
+mail_username = os.getenv('MAIL_USERNAME', '')
+mail_password = os.getenv('MAIL_PASSWORD', '')
+if mail_username:
+    app.config['MAIL_USERNAME'] = mail_username
+if mail_password:
+    app.config['MAIL_PASSWORD'] = mail_password
 app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER', '')
 app.config['MAIL_RECIPIENTS'] = os.getenv('MAIL_RECIPIENTS', '')
 
@@ -189,10 +194,10 @@ class Incident(db.Model):
 class EmailConfig(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     mail_server = db.Column(db.String(100), nullable=False, default='smtp.gmail.com')
-    mail_port = db.Column(db.Integer, nullable=False, default=587)
-    mail_use_tls = db.Column(db.Boolean, nullable=False, default=True)
-    mail_username = db.Column(db.String(120), nullable=False)
-    mail_password = db.Column(db.String(120), nullable=False)
+    mail_port = db.Column(db.Integer, nullable=False, default=25)
+    mail_use_tls = db.Column(db.Boolean, nullable=False, default=False)
+    mail_username = db.Column(db.String(120), nullable=True)  # Optional authentication
+    mail_password = db.Column(db.String(120), nullable=True)  # Optional authentication
     mail_default_sender = db.Column(db.String(120), nullable=False)
     mail_recipients = db.Column(db.Text, nullable=False)  # Comma-separated list
     is_active = db.Column(db.Boolean, default=True)
@@ -226,8 +231,11 @@ def send_corrective_actions_notification(incident, action_type="updated"):
         app.config['MAIL_SERVER'] = email_config.mail_server
         app.config['MAIL_PORT'] = email_config.mail_port
         app.config['MAIL_USE_TLS'] = email_config.mail_use_tls
-        app.config['MAIL_USERNAME'] = email_config.mail_username
-        app.config['MAIL_PASSWORD'] = email_config.mail_password
+        # Only set authentication if provided (optional for relay servers)
+        if email_config.mail_username:
+            app.config['MAIL_USERNAME'] = email_config.mail_username
+        if email_config.mail_password:
+            app.config['MAIL_PASSWORD'] = email_config.mail_password
         
         # Create new Mail instance with updated config
         notification_mail = Mail(app)
@@ -254,13 +262,13 @@ Link: {request.url_root}admin/login
         
         msg = Message(
             subject=subject,
-            recipients=[email_config.admin_email],
+            recipients=email_config.get_recipients_list(),
             body=body,
-            sender=email_config.mail_username
+            sender=email_config.mail_default_sender
         )
         
         notification_mail.send(msg)
-        logger.info(f"Corrective actions notification email sent to {email_config.admin_email} for incident #{incident.id}")
+        logger.info(f"Corrective actions notification email sent to {', '.join(email_config.get_recipients_list())} for incident #{incident.id}")
         return True
         
     except Exception as e:
@@ -287,8 +295,11 @@ def send_reporter_corrective_actions_notification(incident):
         app.config['MAIL_SERVER'] = email_config.mail_server
         app.config['MAIL_PORT'] = email_config.mail_port
         app.config['MAIL_USE_TLS'] = email_config.mail_use_tls
-        app.config['MAIL_USERNAME'] = email_config.mail_username
-        app.config['MAIL_PASSWORD'] = email_config.mail_password
+        # Only set authentication if provided (optional for relay servers)
+        if email_config.mail_username:
+            app.config['MAIL_USERNAME'] = email_config.mail_username
+        if email_config.mail_password:
+            app.config['MAIL_PASSWORD'] = email_config.mail_password
         
         # Create new Mail instance with updated config
         reporter_mail = Mail(app)
@@ -321,7 +332,7 @@ Architectural Nexus
             subject=subject,
             recipients=[incident.reporter_email],
             body=body,
-            sender=email_config.mail_username
+            sender=email_config.mail_default_sender
         )
         
         reporter_mail.send(msg)
@@ -345,8 +356,11 @@ def send_incident_notification(incident, reporter_email=None):
         app.config['MAIL_SERVER'] = email_config.mail_server
         app.config['MAIL_PORT'] = email_config.mail_port
         app.config['MAIL_USE_TLS'] = email_config.mail_use_tls
-        app.config['MAIL_USERNAME'] = email_config.mail_username
-        app.config['MAIL_PASSWORD'] = email_config.mail_password
+        # Only set authentication if provided (optional for relay servers)
+        if email_config.mail_username:
+            app.config['MAIL_USERNAME'] = email_config.mail_username
+        if email_config.mail_password:
+            app.config['MAIL_PASSWORD'] = email_config.mail_password
         app.config['MAIL_DEFAULT_SENDER'] = email_config.mail_default_sender
         
         # Create new Mail instance with updated config
@@ -473,8 +487,11 @@ def send_password_reset_email(user, token):
         app.config['MAIL_SERVER'] = email_config.mail_server
         app.config['MAIL_PORT'] = email_config.mail_port
         app.config['MAIL_USE_TLS'] = email_config.mail_use_tls
-        app.config['MAIL_USERNAME'] = email_config.mail_username
-        app.config['MAIL_PASSWORD'] = email_config.mail_password
+        # Only set authentication if provided (optional for relay servers)
+        if email_config.mail_username:
+            app.config['MAIL_USERNAME'] = email_config.mail_username
+        if email_config.mail_password:
+            app.config['MAIL_PASSWORD'] = email_config.mail_password
         app.config['MAIL_DEFAULT_SENDER'] = email_config.mail_default_sender
         
         # Create new Mail instance with updated config
@@ -546,8 +563,11 @@ def send_welcome_email(user, temporary_password):
         app.config['MAIL_SERVER'] = email_config.mail_server
         app.config['MAIL_PORT'] = email_config.mail_port
         app.config['MAIL_USE_TLS'] = email_config.mail_use_tls
-        app.config['MAIL_USERNAME'] = email_config.mail_username
-        app.config['MAIL_PASSWORD'] = email_config.mail_password
+        # Only set authentication if provided (optional for relay servers)
+        if email_config.mail_username:
+            app.config['MAIL_USERNAME'] = email_config.mail_username
+        if email_config.mail_password:
+            app.config['MAIL_PASSWORD'] = email_config.mail_password
         app.config['MAIL_DEFAULT_SENDER'] = email_config.mail_default_sender
         
         # Create new Mail instance with updated config
@@ -1217,17 +1237,20 @@ def save_email_config():
             email_config = EmailConfig()
         
         email_config.mail_server = request.form.get('mail_server', '').strip()
-        email_config.mail_port = int(request.form.get('mail_port', 587))
+        email_config.mail_port = int(request.form.get('mail_port', 25))
         email_config.mail_use_tls = request.form.get('mail_use_tls') == 'on'
-        email_config.mail_username = request.form.get('mail_username', '').strip()
-        email_config.mail_password = request.form.get('mail_password', '').strip()
+        # Authentication is optional - allow empty values for relay servers
+        mail_username = request.form.get('mail_username', '').strip()
+        email_config.mail_username = mail_username if mail_username else None
+        mail_password = request.form.get('mail_password', '').strip()
+        email_config.mail_password = mail_password if mail_password else None
         email_config.mail_default_sender = request.form.get('mail_default_sender', '').strip()
         email_config.mail_recipients = request.form.get('mail_recipients', '').strip()
         email_config.is_active = request.form.get('is_active') == 'on'
         
-        # Validate required fields
-        if not email_config.mail_server or not email_config.mail_username or not email_config.mail_password:
-            flash('Mail server, username, and password are required', 'error')
+        # Validate required fields (authentication is optional for relay servers)
+        if not email_config.mail_server:
+            flash('Mail server is required', 'error')
             return redirect(url_for('admin_email_config'))
         
         if email_config.is_active and not email_config.mail_recipients:
@@ -1263,8 +1286,11 @@ def test_email_config():
         app.config['MAIL_SERVER'] = email_config.mail_server
         app.config['MAIL_PORT'] = email_config.mail_port
         app.config['MAIL_USE_TLS'] = email_config.mail_use_tls
-        app.config['MAIL_USERNAME'] = email_config.mail_username
-        app.config['MAIL_PASSWORD'] = email_config.mail_password
+        # Only set authentication if provided (optional for relay servers)
+        if email_config.mail_username:
+            app.config['MAIL_USERNAME'] = email_config.mail_username
+        if email_config.mail_password:
+            app.config['MAIL_PASSWORD'] = email_config.mail_password
         app.config['MAIL_DEFAULT_SENDER'] = email_config.mail_default_sender
         
         # Create new Mail instance with updated config
