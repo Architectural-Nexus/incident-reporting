@@ -148,7 +148,8 @@
 <div class="card">
     <h1 style="margin-bottom: 1.5rem; color: var(--text-primary);">Manage Admin Users</h1>
     
-    <!-- Add new user form -->
+    <!-- Add new user form (Master Admin only) -->
+    {% if current_user.is_master_admin() %}
     <div style="margin-bottom: 2rem; padding: 1.5rem; background-color: var(--background-color); border-radius: 0.5rem;">
         <h3 style="margin-bottom: 1rem; color: var(--text-primary);">Add New User</h3>
         <form method="POST" action="{{ url_for('add_user') }}" style="display: flex; gap: 1rem; align-items: start; flex-wrap: wrap;">
@@ -172,6 +173,7 @@
             </div>
         </form>
     </div>
+    {% endif %}
 
     <!-- Users table -->
     <div>
@@ -273,7 +275,8 @@
                     </form>
                 </div>
                 
-                <!-- Change Role Section -->
+                <!-- Change Role Section (Master Admin only) -->
+                {% if current_user.is_master_admin() %}
                 <div class="action-section">
                     <h4 style="margin-bottom: 0.5rem; color: var(--text-primary);">Change Role</h4>
                     <form id="changeRoleForm" style="display: flex; gap: 0.5rem; align-items: start; flex-wrap: wrap;">
@@ -289,6 +292,7 @@
                         </div>
                     </form>
                 </div>
+                {% endif %}
                 
                 <!-- User Status Section -->
                 <div class="action-section">
@@ -298,13 +302,15 @@
                     </div>
                 </div>
                 
-                <!-- Delete User Section -->
+                <!-- Delete User Section (Master Admin only) -->
+                {% if current_user.is_master_admin() %}
                 <div class="action-section">
                     <h4 style="margin-bottom: 0.5rem; color: var(--text-primary);">Danger Zone</h4>
                     <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
                         <button id="deleteUserBtn" class="btn btn-danger">Delete User</button>
                     </div>
                 </div>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -370,15 +376,33 @@ document.addEventListener('DOMContentLoaded', function() {
         // Set current role in dropdown
         document.getElementById('newRole').value = user.role;
         
-        // Disable actions for current user
+        // Check if current user is master admin
+        const isMasterAdmin = {{ 'true' if current_user.is_master_admin() else 'false' }};
         const isCurrentUser = user.is_current_user;
-        changePasswordForm.style.display = isCurrentUser ? 'none' : 'flex';
-        document.getElementById('changeRoleForm').style.display = isCurrentUser ? 'none' : 'flex';
-        toggleStatusBtn.style.display = isCurrentUser ? 'none' : 'inline-block';
-        deleteUserBtn.style.display = isCurrentUser ? 'none' : 'inline-block';
+        
+        // Change Password: Show for master admins (for others) or for users editing themselves
+        if (isMasterAdmin || isCurrentUser) {
+            changePasswordForm.style.display = 'flex';
+        } else {
+            changePasswordForm.style.display = 'none';
+        }
+        
+        // Change Role: Only show for master admins, and hide for current user
+        const changeRoleForm = document.getElementById('changeRoleForm');
+        if (changeRoleForm) {
+            changeRoleForm.style.display = (isMasterAdmin && !isCurrentUser) ? 'flex' : 'none';
+        }
+        
+        // Toggle Status: Master admins can toggle anyone, incident managers can only toggle themselves
+        toggleStatusBtn.style.display = (isMasterAdmin || isCurrentUser) ? 'inline-block' : 'none';
+        
+        // Delete User: Only for master admins, and hide for current user
+        if (deleteUserBtn) {
+            deleteUserBtn.style.display = (isMasterAdmin && !isCurrentUser) ? 'inline-block' : 'none';
+        }
         
         if (isCurrentUser) {
-            document.querySelector('.user-actions h3').textContent = 'Current User - Limited Actions';
+            document.querySelector('.user-actions h3').textContent = 'Your Account - Limited Actions';
         } else {
             document.querySelector('.user-actions h3').textContent = 'Actions';
         }
@@ -433,8 +457,9 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
-    // Change role form submission
+    // Change role form submission (Master Admin only)
     const changeRoleForm = document.getElementById('changeRoleForm');
+    if (changeRoleForm) {
     changeRoleForm.addEventListener('submit', async function(e) {
         e.preventDefault();
         

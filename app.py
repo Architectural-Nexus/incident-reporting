@@ -2,6 +2,7 @@ import os
 import csv
 import logging
 import secrets
+import smtplib
 from datetime import datetime, timedelta
 from io import StringIO, BytesIO
 from functools import wraps
@@ -40,6 +41,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER', 'smtp.gmail.com')
 app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT', 25))
 app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS', 'False').lower() == 'true'
+app.config['MAIL_USE_SSL'] = False  # Explicitly disable SSL by default
 # Authentication is optional - only set if provided
 mail_username = os.getenv('MAIL_USERNAME', '')
 mail_password = os.getenv('MAIL_PASSWORD', '')
@@ -231,14 +233,20 @@ def send_corrective_actions_notification(incident, action_type="updated"):
         app.config['MAIL_SERVER'] = email_config.mail_server
         app.config['MAIL_PORT'] = email_config.mail_port
         app.config['MAIL_USE_TLS'] = email_config.mail_use_tls
+        app.config['MAIL_USE_SSL'] = False  # Explicitly disable SSL
         # Only set authentication if provided (optional for relay servers)
         if email_config.mail_username:
             app.config['MAIL_USERNAME'] = email_config.mail_username
+        else:
+            app.config.pop('MAIL_USERNAME', None)
         if email_config.mail_password:
             app.config['MAIL_PASSWORD'] = email_config.mail_password
+        else:
+            app.config.pop('MAIL_PASSWORD', None)
         
-        # Create new Mail instance with updated config
-        notification_mail = Mail(app)
+        # Create new Mail instance with updated config - force re-initialization
+        notification_mail = Mail()
+        notification_mail.init_app(app)
         
         # Prepare email content
         subject = f"Corrective Actions {action_type.title()} - Incident #{incident.id}"
@@ -295,11 +303,16 @@ def send_reporter_corrective_actions_notification(incident):
         app.config['MAIL_SERVER'] = email_config.mail_server
         app.config['MAIL_PORT'] = email_config.mail_port
         app.config['MAIL_USE_TLS'] = email_config.mail_use_tls
+        app.config['MAIL_USE_SSL'] = False  # Explicitly disable SSL
         # Only set authentication if provided (optional for relay servers)
         if email_config.mail_username:
             app.config['MAIL_USERNAME'] = email_config.mail_username
+        else:
+            app.config.pop('MAIL_USERNAME', None)
         if email_config.mail_password:
             app.config['MAIL_PASSWORD'] = email_config.mail_password
+        else:
+            app.config.pop('MAIL_PASSWORD', None)
         
         # Create new Mail instance with updated config
         reporter_mail = Mail(app)
@@ -356,15 +369,29 @@ def send_incident_notification(incident, reporter_email=None):
         app.config['MAIL_SERVER'] = email_config.mail_server
         app.config['MAIL_PORT'] = email_config.mail_port
         app.config['MAIL_USE_TLS'] = email_config.mail_use_tls
+        app.config['MAIL_USE_SSL'] = False  # Explicitly disable SSL
         # Only set authentication if provided (optional for relay servers)
         if email_config.mail_username:
             app.config['MAIL_USERNAME'] = email_config.mail_username
+        else:
+            app.config.pop('MAIL_USERNAME', None)
         if email_config.mail_password:
             app.config['MAIL_PASSWORD'] = email_config.mail_password
+        else:
+            app.config.pop('MAIL_PASSWORD', None)
         app.config['MAIL_DEFAULT_SENDER'] = email_config.mail_default_sender
         
-        # Create new Mail instance with updated config
-        notification_mail = Mail(app)
+        # For port 25 without TLS, prevent STARTTLS
+        original_starttls = None
+        if not email_config.mail_use_tls and email_config.mail_port == 25:
+            original_starttls = smtplib.SMTP.starttls
+            def no_starttls(self, *args, **kwargs):
+                return self
+            smtplib.SMTP.starttls = no_starttls
+        
+        # Create new Mail instance with updated config - force re-initialization
+        notification_mail = Mail()
+        notification_mail.init_app(app)
         
         # Format incident datetime
         incident_datetime_str = incident.incident_datetime.strftime('%B %d, %Y at %I:%M %p')
@@ -376,6 +403,10 @@ def send_incident_notification(incident, reporter_email=None):
             recipients=email_config.get_recipients_list()
         )
         
+        # Get the base URL from environment or use production URL
+        base_url = os.getenv('BASE_URL', 'https://incidents.archnexus.com')
+        admin_login_url = f"{base_url}/admin/login"
+        
         # Email body
         msg.body = f"""A new Work Place Incident has been reported. Please follow the link below to see the report. Note: if you are outside the office you will need to be connected via VPN to see the report.
 
@@ -386,7 +417,7 @@ Type: {incident.incident_type}
 Location: {incident.location}
 
 To view the full incident report, please log in to the admin dashboard:
-http://localhost:5002/admin/login
+{admin_login_url}
 
 Submitted: {incident.submitted_at.strftime('%B %d, %Y at %I:%M %p')}
 
@@ -394,9 +425,14 @@ Submitted: {incident.submitted_at.strftime('%B %d, %Y at %I:%M %p')}
 This is an automated notification from the Work Place Violence Reporting Server.
         """
         
-        # Send notification email to administrators
-        notification_mail.send(msg)
-        logger.info(f"Incident notification email sent for incident #{incident.id}")
+        try:
+            # Send notification email to administrators
+            notification_mail.send(msg)
+            logger.info(f"Incident notification email sent for incident #{incident.id}")
+        finally:
+            # Restore original starttls if we patched it
+            if original_starttls is not None:
+                smtplib.SMTP.starttls = original_starttls
         
         # If reporter email is provided, send confirmation email to reporter
         if reporter_email:
@@ -410,20 +446,37 @@ This is an automated notification from the Work Place Violence Reporting Server.
             is_anonymous = incident.reporter_email is None
             
             if is_anonymous:
-                confirmation_msg.body = f"""Your incident report has been submitted successfully.
+                # Send detailed incident report for anonymous submissions
+                confirmation_msg.body = f"""Your anonymous incident report has been submitted successfully.
+
+IMPORTANT: Your contact information was NOT recorded in the database because you chose to submit the form anonymously. Management at Architectural Nexus will not have any way to get in touch with you.
+
+INCIDENT REPORT DETAILS:
 
 Incident ID: #{incident.id}
-Date/Time: {incident_datetime_str}
+Date/Time of Incident: {incident_datetime_str}
 Type: {incident.incident_type}
 Location: {incident.location}
 
-• Your contact information was not recorded because you chose to submit the form anonymously.
-• Because you chose to submit the form anonymously, Management at Architectural Nexus will not have any way to get in touch with you.
+Description of What Happened:
+{incident.incident_description}
+
+Names and Identifiers of Those Involved:
+{incident.persons_involved}
+
+Additional Details:
+- Threats/Weapons: {incident.threats_weapons or 'Not provided'}
+- Medical Treatment: {incident.medical_treatment or 'Not provided'}
+- Law Enforcement Contacted: {incident.law_enforcement or 'Not provided'}
+- Security Intervention: {incident.security_intervention or 'Not provided'}
+- Incident Response: {incident.incident_response or 'Not provided'}
+- Contributing Factors: {incident.contributing_factors or 'Not provided'}
 
 Submitted: {incident.submitted_at.strftime('%B %d, %Y at %I:%M %p')}
 
 ---
 This is an automated confirmation from the Work Place Violence Reporting Server.
+Your email address was used only to send this confirmation and was not stored in our system.
                 """
             else:
                 confirmation_msg.body = f"""Thank you for reporting the workplace incident. Your report has been received and will be reviewed by the appropriate personnel.
@@ -441,13 +494,30 @@ Submitted: {incident.submitted_at.strftime('%B %d, %Y at %I:%M %p')}
 This is an automated confirmation from the Work Place Violence Reporting Server.
                 """
             
-            notification_mail.send(confirmation_msg)
-            logger.info(f"Confirmation email sent to reporter: {reporter_email}")
+            # Re-patch if needed for reporter email
+            if not email_config.mail_use_tls and email_config.mail_port == 25:
+                original_starttls = smtplib.SMTP.starttls
+                def no_starttls(self, *args, **kwargs):
+                    return self
+                smtplib.SMTP.starttls = no_starttls
+            
+            try:
+                notification_mail.send(confirmation_msg)
+                logger.info(f"Confirmation email sent to reporter: {reporter_email}")
+            finally:
+                if original_starttls is not None:
+                    smtplib.SMTP.starttls = original_starttls
         
         return True
         
     except Exception as e:
         logger.error(f"Error sending email notification for incident #{incident.id}: {str(e)}")
+        # Restore starttls if patched
+        if 'original_starttls' in locals() and original_starttls is not None:
+            try:
+                smtplib.SMTP.starttls = original_starttls
+            except:
+                pass
         return False
 
 def generate_password_reset_token(user):
@@ -497,8 +567,9 @@ def send_password_reset_email(user, token):
         # Create new Mail instance with updated config
         reset_mail = Mail(app)
         
-        # Create reset URL
-        reset_url = f"http://localhost:5002/admin/reset-password/{token}"
+        # Get the base URL from environment or use production URL
+        base_url = os.getenv('BASE_URL', 'https://incidents.archnexus.com')
+        reset_url = f"{base_url}/admin/reset-password/{token}"
         
         # Create email message
         msg = Message(
@@ -563,18 +634,33 @@ def send_welcome_email(user, temporary_password):
         app.config['MAIL_SERVER'] = email_config.mail_server
         app.config['MAIL_PORT'] = email_config.mail_port
         app.config['MAIL_USE_TLS'] = email_config.mail_use_tls
+        app.config['MAIL_USE_SSL'] = False  # Explicitly disable SSL
         # Only set authentication if provided (optional for relay servers)
         if email_config.mail_username:
             app.config['MAIL_USERNAME'] = email_config.mail_username
+        else:
+            app.config.pop('MAIL_USERNAME', None)
         if email_config.mail_password:
             app.config['MAIL_PASSWORD'] = email_config.mail_password
+        else:
+            app.config.pop('MAIL_PASSWORD', None)
         app.config['MAIL_DEFAULT_SENDER'] = email_config.mail_default_sender
         
-        # Create new Mail instance with updated config
-        welcome_mail = Mail(app)
+        # For port 25 without TLS, prevent STARTTLS
+        original_starttls = None
+        if not email_config.mail_use_tls and email_config.mail_port == 25:
+            original_starttls = smtplib.SMTP.starttls
+            def no_starttls(self, *args, **kwargs):
+                return self
+            smtplib.SMTP.starttls = no_starttls
         
-        # Create login URL
-        login_url = "http://localhost:5002/admin/login"
+        # Create new Mail instance with updated config - force re-initialization
+        welcome_mail = Mail()
+        welcome_mail.init_app(app)
+        
+        # Get the base URL from environment or use production URL
+        base_url = os.getenv('BASE_URL', 'https://incidents.archnexus.com')
+        login_url = f"{base_url}/admin/login"
         
         # Create email message
         msg = Message(
@@ -614,12 +700,23 @@ If you did not expect this account creation, please contact your administrator i
 This is an automated message from the Work Place Violence Reporting Server.
         """
         
-        welcome_mail.send(msg)
-        logger.info(f"Welcome email sent to {user.email} for user: {user.username}")
-        return True
+        try:
+            welcome_mail.send(msg)
+            logger.info(f"Welcome email sent to {user.email} for user: {user.username}")
+            return True
+        finally:
+            # Restore original starttls if we patched it
+            if original_starttls is not None:
+                smtplib.SMTP.starttls = original_starttls
         
     except Exception as e:
         logger.error(f"Error sending welcome email to {user.email}: {str(e)}")
+        # Restore starttls if patched
+        if 'original_starttls' in locals() and original_starttls is not None:
+            try:
+                smtplib.SMTP.starttls = original_starttls
+            except:
+                pass
         return False
 
 # Routes
@@ -633,19 +730,27 @@ def submit_incident():
     """Handle incident form submission"""
     try:
         # Get reporter information (all optional)
-        reporter_name = request.form.get('reporter_name', '').strip()
-        if not reporter_name:
-            reporter_name = 'Anonymous'
-        reporter_job_title = request.form.get('reporter_job_title', '').strip() or None
-        reporter_email = request.form.get('reporter_email', '').strip() or None
-        reporter_phone = request.form.get('reporter_phone', '').strip() or None
         remain_anonymous = request.form.get('remain_anonymous') == 'on'
         
-        # If user wants to remain anonymous, don't store their email in the database
-        # but keep it for sending confirmation email
-        confirmation_email = reporter_email  # Always keep email for confirmation if provided
+        # If user wants to remain anonymous, don't store ANY reporter information in the database
+        # but keep email for sending detailed incident report
         if remain_anonymous:
-            reporter_email = None  # Don't store in database
+            # Save email temporarily for sending detailed report, but don't store in DB
+            confirmation_email = request.form.get('reporter_email', '').strip() or None
+            # Set all reporter fields to anonymous/None
+            reporter_name = 'Anonymous'
+            reporter_job_title = None
+            reporter_email = None
+            reporter_phone = None
+        else:
+            # Normal submission - save all provided information
+            reporter_name = request.form.get('reporter_name', '').strip()
+            if not reporter_name:
+                reporter_name = 'Anonymous'
+            reporter_job_title = request.form.get('reporter_job_title', '').strip() or None
+            reporter_email = request.form.get('reporter_email', '').strip() or None
+            reporter_phone = request.form.get('reporter_phone', '').strip() or None
+            confirmation_email = reporter_email  # Use same email for confirmation
         
         # Get incident details
         incident_datetime_str = request.form.get('incident_datetime')
@@ -865,7 +970,9 @@ def admin_logout():
 @incident_manager_required
 def admin_dashboard():
     """Admin dashboard to view incidents"""
-    return render_template('admin_dashboard.html')
+    # Pass user role to template so it can conditionally show delete button
+    is_master_admin = current_user.is_master_admin()
+    return render_template('admin_dashboard.html', is_master_admin=is_master_admin)
 
 @app.route('/admin/incidents')
 @incident_manager_required
@@ -1041,10 +1148,14 @@ def export_incidents():
         return redirect(url_for('admin_dashboard'))
 
 @app.route('/admin/users')
-@master_admin_required
+@incident_manager_required
 def admin_users():
     """Admin users management page"""
-    users = User.query.all()
+    # Master admins can see all users, incident managers can only see other incident managers
+    if current_user.is_master_admin():
+        users = User.query.all()
+    else:
+        users = User.query.filter_by(role='incident_manager').all()
     return render_template('admin_users.html', users=users)
 
 @app.route('/admin/users/add', methods=['POST'])
@@ -1103,14 +1214,20 @@ def add_user():
     return redirect(url_for('admin_users'))
 
 @app.route('/admin/users/<int:user_id>/toggle', methods=['POST'])
-@master_admin_required
+@incident_manager_required
 def toggle_user(user_id):
     """Toggle user active status"""
     try:
         user = User.query.get_or_404(user_id)
         
+        # Master admins can toggle anyone, incident managers can only toggle themselves
+        if not current_user.is_master_admin():
+            if user.id != current_user.id:
+                flash('You can only manage your own account')
+                return redirect(url_for('admin_users'))
+        
         # Prevent deactivating self
-        if user.id == current_user.id:
+        if user.id == current_user.id and not user.is_active:
             flash('Cannot deactivate your own account')
             return redirect(url_for('admin_users'))
         
@@ -1129,15 +1246,16 @@ def toggle_user(user_id):
     return redirect(url_for('admin_users'))
 
 @app.route('/admin/users/<int:user_id>/change-password', methods=['POST'])
-@master_admin_required
+@incident_manager_required
 def change_user_password(user_id):
     """Change user password"""
     try:
         user = User.query.get_or_404(user_id)
         
-        # Prevent changing own password through this route
-        if user.id == current_user.id:
-            return jsonify({'success': False, 'message': 'Cannot change your own password through this interface'}), 400
+        # Master admins can change anyone's password, incident managers can only change their own
+        if not current_user.is_master_admin():
+            if user.id != current_user.id:
+                return jsonify({'success': False, 'message': 'You can only change your own password'}), 403
         
         data = request.get_json()
         new_password = data.get('new_password', '').strip()
@@ -1162,13 +1280,17 @@ def change_user_password(user_id):
 @app.route('/admin/users/<int:user_id>/change-role', methods=['POST'])
 @master_admin_required
 def change_user_role(user_id):
-    """Change user role"""
+    """Change user role (Master Admin only)"""
     try:
         user = User.query.get_or_404(user_id)
         
         # Prevent changing own role
         if user.id == current_user.id:
             return jsonify({'success': False, 'message': 'Cannot change your own role'}), 400
+        
+        # Prevent incident managers from self-elevating (even if they somehow access this endpoint)
+        if not current_user.is_master_admin():
+            return jsonify({'success': False, 'message': 'Only Master Admins can change user roles'}), 403
         
         data = request.get_json()
         new_role = data.get('new_role', '').strip()
@@ -1181,6 +1303,10 @@ def change_user_role(user_id):
         
         if new_role == user.role:
             return jsonify({'success': False, 'message': 'User already has this role'}), 400
+        
+        # Prevent incident managers from elevating themselves to master_admin
+        if user.role == 'incident_manager' and new_role == 'master_admin' and not current_user.is_master_admin():
+            return jsonify({'success': False, 'message': 'Incident Managers cannot elevate privileges'}), 403
         
         old_role = user.role
         user.role = new_role
@@ -1220,41 +1346,55 @@ def delete_user(user_id):
     return redirect(url_for('admin_users'))
 
 @app.route('/admin/email-config')
-@email_config_required
+@incident_manager_required
 def admin_email_config():
     """Email configuration page"""
     email_config = EmailConfig.query.first()
-    return render_template('admin_email_config.html', email_config=email_config)
+    is_master_admin = current_user.is_master_admin()
+    return render_template('admin_email_config.html', email_config=email_config, is_master_admin=is_master_admin)
 
 @app.route('/admin/email-config/save', methods=['POST'])
-@email_config_required
+@incident_manager_required
 def save_email_config():
     """Save email configuration"""
     try:
         email_config = EmailConfig.query.first()
         
         if not email_config:
+            # If no config exists, only master admins can create it
+            if not current_user.is_master_admin():
+                flash('Email configuration must be set up by a Master Admin first', 'error')
+                return redirect(url_for('admin_email_config'))
             email_config = EmailConfig()
         
-        email_config.mail_server = request.form.get('mail_server', '').strip()
-        email_config.mail_port = int(request.form.get('mail_port', 25))
-        email_config.mail_use_tls = request.form.get('mail_use_tls') == 'on'
-        # Authentication is optional - allow empty values for relay servers
-        mail_username = request.form.get('mail_username', '').strip()
-        email_config.mail_username = mail_username if mail_username else None
-        mail_password = request.form.get('mail_password', '').strip()
-        email_config.mail_password = mail_password if mail_password else None
-        email_config.mail_default_sender = request.form.get('mail_default_sender', '').strip()
+        # Master admins can edit all fields, incident managers can only edit recipients
+        if current_user.is_master_admin():
+            email_config.mail_server = request.form.get('mail_server', '').strip()
+            email_config.mail_port = int(request.form.get('mail_port', 25))
+            # Checkbox: 'on' if checked, None if unchecked
+            mail_use_tls_value = request.form.get('mail_use_tls')
+            email_config.mail_use_tls = (mail_use_tls_value == 'on')
+            logger.info(f"Saving email config: TLS checkbox value='{mail_use_tls_value}', setting mail_use_tls={email_config.mail_use_tls}")
+            # Authentication is optional - allow empty values for relay servers
+            mail_username = request.form.get('mail_username', '').strip()
+            email_config.mail_username = mail_username if mail_username else None
+            mail_password = request.form.get('mail_password', '').strip()
+            email_config.mail_password = mail_password if mail_password else None
+            email_config.mail_default_sender = request.form.get('mail_default_sender', '').strip()
+            email_config.is_active = request.form.get('is_active') == 'on'
+        
+        # Both master admins and incident managers can edit recipients
         email_config.mail_recipients = request.form.get('mail_recipients', '').strip()
-        email_config.is_active = request.form.get('is_active') == 'on'
         
-        # Validate required fields (authentication is optional for relay servers)
-        if not email_config.mail_server:
-            flash('Mail server is required', 'error')
-            return redirect(url_for('admin_email_config'))
+        # Validate required fields (only for master admins who can edit all fields)
+        if current_user.is_master_admin():
+            if not email_config.mail_server:
+                flash('Mail server is required', 'error')
+                return redirect(url_for('admin_email_config'))
         
-        if email_config.is_active and not email_config.mail_recipients:
-            flash('Recipients are required when email notifications are active', 'error')
+        # Validate recipients (required for all)
+        if not email_config.mail_recipients:
+            flash('At least one recipient email address is required', 'error')
             return redirect(url_for('admin_email_config'))
         
         if email_config.id is None:
@@ -1273,7 +1413,7 @@ def save_email_config():
     return redirect(url_for('admin_email_config'))
 
 @app.route('/admin/email-config/test', methods=['POST'])
-@email_config_required
+@incident_manager_required
 def test_email_config():
     """Test email configuration by sending a test email"""
     try:
@@ -1286,15 +1426,37 @@ def test_email_config():
         app.config['MAIL_SERVER'] = email_config.mail_server
         app.config['MAIL_PORT'] = email_config.mail_port
         app.config['MAIL_USE_TLS'] = email_config.mail_use_tls
+        app.config['MAIL_USE_SSL'] = False  # Explicitly disable SSL (for port 25 without encryption)
+        app.config['MAIL_SUPPRESS_SEND'] = False
         # Only set authentication if provided (optional for relay servers)
         if email_config.mail_username:
             app.config['MAIL_USERNAME'] = email_config.mail_username
+        else:
+            # Explicitly remove if not set to prevent Flask-Mail from trying to authenticate
+            app.config.pop('MAIL_USERNAME', None)
         if email_config.mail_password:
             app.config['MAIL_PASSWORD'] = email_config.mail_password
+        else:
+            # Explicitly remove if not set
+            app.config.pop('MAIL_PASSWORD', None)
         app.config['MAIL_DEFAULT_SENDER'] = email_config.mail_default_sender
         
+        # For port 25 without TLS, prevent Flask-Mail from trying STARTTLS
+        # Flask-Mail's smtplib might try STARTTLS automatically even when MAIL_USE_TLS is False
+        original_starttls = None
+        if not email_config.mail_use_tls and email_config.mail_port == 25:
+            # Monkey patch to prevent STARTTLS on port 25
+            original_starttls = smtplib.SMTP.starttls
+            def no_starttls(self, *args, **kwargs):
+                # Do nothing - don't try STARTTLS
+                logger.info("Skipping STARTTLS for port 25 without TLS")
+                return self
+            smtplib.SMTP.starttls = no_starttls
+        
         # Create new Mail instance with updated config
-        test_mail = Mail(app)
+        # Force re-initialization to pick up new config
+        test_mail = Mail()
+        test_mail.init_app(app)
         
         # Send test email
         msg = Message(
@@ -1317,14 +1479,49 @@ Sent by: {current_user.username}
 Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         """
         
-        test_mail.send(msg)
+        try:
+            test_mail.send(msg)
+        finally:
+            # Always restore original starttls if we patched it
+            if original_starttls is not None:
+                smtplib.SMTP.starttls = original_starttls
         
         logger.info(f"Test email sent successfully by admin {current_user.username}")
         return jsonify({'success': True, 'message': 'Test email sent successfully'})
         
     except Exception as e:
         logger.error(f"Error sending test email: {str(e)}")
+        # Restore original starttls if we patched it
+        if not email_config.mail_use_tls and email_config.mail_port == 25:
+            try:
+                smtplib.SMTP.starttls = original_starttls
+            except:
+                pass
         return jsonify({'success': False, 'message': f'Error sending test email: {str(e)}'}), 500
+
+@app.route('/admin/incidents/<int:incident_id>/delete', methods=['POST'])
+@master_admin_required
+def delete_incident(incident_id):
+    """Delete an incident (Master Admin only)"""
+    try:
+        incident = Incident.query.get_or_404(incident_id)
+        
+        # Log the deletion
+        logger.info(f"Master admin {current_user.username} deleting incident #{incident_id}")
+        
+        # Delete the incident
+        db.session.delete(incident)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Incident #{incident_id} deleted successfully'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error deleting incident #{incident_id}: {str(e)}")
+        db.session.rollback()
+        return jsonify({'success': False, 'message': 'Error deleting incident'}), 500
 
 @app.route('/admin/incidents/<int:incident_id>/corrective-actions', methods=['POST'])
 @incident_manager_required

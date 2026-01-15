@@ -50,6 +50,9 @@
             <div class="modal-header-buttons">
                 <button id="saveModalBtn" class="btn btn-primary btn-sm">Save</button>
                 <button id="exportPdfModalBtn" class="btn btn-outline btn-sm" disabled>Export PDF</button>
+                {% if is_master_admin %}
+                <button id="deleteIncidentBtn" class="btn btn-danger btn-sm" style="display: none;">Delete Incident</button>
+                {% endif %}
                 <span class="close">&times;</span>
             </div>
         </div>
@@ -947,6 +950,13 @@ document.addEventListener('DOMContentLoaded', function() {
         // Store incident ID for saving
         correctiveActionsTextarea.setAttribute('data-incident-id', incident.id);
         
+        // Show delete button for master admins
+        const deleteBtn = document.getElementById('deleteIncidentBtn');
+        if (deleteBtn) {
+            deleteBtn.style.display = 'inline-block';
+            deleteBtn.setAttribute('data-incident-id', incident.id);
+        }
+        
         // Initialize unsaved changes tracking
         originalCorrectiveActions = incident.corrective_actions || '';
         hasUnsavedChanges = false;
@@ -986,6 +996,58 @@ document.addEventListener('DOMContentLoaded', function() {
         originalRenderIncidents();
         addTableRowListeners();
     };
+
+    // Delete incident handler (Master Admin only)
+    const deleteIncidentBtn = document.getElementById('deleteIncidentBtn');
+    if (deleteIncidentBtn) {
+        deleteIncidentBtn.addEventListener('click', async function() {
+            const incidentId = this.getAttribute('data-incident-id');
+            if (!incidentId) return;
+            
+            const incident = incidents.find(inc => inc.id == parseInt(incidentId));
+            if (!incident) return;
+            
+            // Confirm deletion
+            if (!confirm(`Are you sure you want to delete Incident #${incidentId}?\n\nThis action cannot be undone.`)) {
+                return;
+            }
+            
+            // Double confirmation for safety
+            if (!confirm(`Final confirmation: Delete Incident #${incidentId}?\n\nThis will permanently remove this incident from the system.`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/admin/incidents/${incidentId}/delete`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    // Remove from incidents array
+                    incidents = incidents.filter(inc => inc.id !== parseInt(incidentId));
+                    
+                    // Close modal
+                    document.getElementById('incidentModal').style.display = 'none';
+                    
+                    // Reload incidents list
+                    loadIncidents();
+                    
+                    // Show success message
+                    alert(`Incident #${incidentId} has been deleted successfully.`);
+                } else {
+                    alert('Error: ' + (result.message || 'Failed to delete incident'));
+                }
+            } catch (error) {
+                console.error('Error deleting incident:', error);
+                alert('Error deleting incident. Please try again.');
+            }
+        });
+    }
 
     // Initial load
     loadIncidents();
