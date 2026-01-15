@@ -27,7 +27,7 @@ proc_name = "incident_reports"
 
 # Server mechanics
 daemon = False
-pidfile = "/var/run/incident-reports/incident_reports.pid"
+pidfile = "/opt/incident-reporting/incident-reporting.pid"
 user = None
 group = None
 tmp_upload_dir = None
