@@ -192,7 +192,16 @@
                 </thead>
                 <tbody>
                     {% for user in users %}
-                        <tr class="user-row" data-user='{"id": {{ user.id }}, "username": "{{ user.username }}", "email": "{{ user.email or '' }}", "role": "{{ user.role }}", "is_active": {{ user.is_active|lower }}, "created_at": "{{ user.created_at.strftime('%Y-%m-%d %H:%M') }}", "is_current_user": {{ (user.id == current_user.id)|lower }}}' style="cursor: pointer;">
+                        <tr class="user-row" 
+                            data-user-id="{{ user.id }}"
+                            data-user-username="{{ user.username }}"
+                            data-user-email="{{ user.email or '' }}"
+                            data-user-role="{{ user.role }}"
+                            data-user-active="{{ user.is_active|lower }}"
+                            data-user-created="{{ user.created_at.strftime('%Y-%m-%d %H:%M') }}"
+                            data-user-current="{{ (user.id == current_user.id)|lower }}"
+                            onclick="console.log('Row clicked!'); var modal = document.getElementById('userModal'); if(modal) { var username = this.getAttribute('data-user-username'); document.getElementById('modalUsername').textContent = username; document.getElementById('modalRole').textContent = this.getAttribute('data-user-role') === 'master_admin' ? 'Master Admin' : 'Incident Manager'; document.getElementById('modalStatus').textContent = this.getAttribute('data-user-active') === 'true' ? 'Active' : 'Inactive'; document.getElementById('modalCreated').textContent = this.getAttribute('data-user-created'); modal.style.display = 'block'; } else { alert('Modal not found!'); }"
+                            style="cursor: pointer;">
                             <td>{{ user.username }}</td>
                             <td>{{ user.email or 'Not set' }}</td>
                             <td>
@@ -231,7 +240,7 @@
     <div class="modal-content">
         <div class="modal-header">
             <h2 id="modalTitle">Manage User</h2>
-            <span class="close">&times;</span>
+            <span class="close" onclick="document.getElementById('userModal').style.display='none'">&times;</span>
         </div>
         <div class="modal-body">
             <div class="user-details">
@@ -313,12 +322,77 @@
                 {% endif %}
             </div>
         </div>
+        
+        <!-- Modal Footer with Cancel Button -->
+        <div style="padding: 1rem; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 0.5rem;">
+            <button type="button" class="btn btn-secondary" onclick="document.getElementById('userModal').style.display='none'">Cancel</button>
+        </div>
     </div>
 </div>
+{% endblock %}
 
 {% block extra_js %}
 <script>
-let currentUser = null;
+// Global variables and functions (accessible before DOMContentLoaded)
+var currentUser = null;
+var modal = null;
+
+// Global function to handle user row clicks (called directly from onclick)
+function handleUserRowClick(rowElement) {
+    console.log('handleUserRowClick called directly');
+    if (!rowElement) {
+        console.error('No row element provided');
+        return;
+    }
+    
+    try {
+        // Build user data object from data attributes
+        var userData = {
+            id: parseInt(rowElement.getAttribute('data-user-id')),
+            username: rowElement.getAttribute('data-user-username'),
+            email: rowElement.getAttribute('data-user-email'),
+            role: rowElement.getAttribute('data-user-role'),
+            is_active: rowElement.getAttribute('data-user-active') === 'true',
+            created_at: rowElement.getAttribute('data-user-created'),
+            is_current_user: rowElement.getAttribute('data-user-current') === 'true'
+        };
+        
+        console.log('User data from onclick:', JSON.stringify(userData));
+        
+        if (!userData.id || isNaN(userData.id)) {
+            console.error('Invalid user data - missing or invalid ID:', userData.id);
+            return;
+        }
+        
+        if (!userData.username) {
+            console.error('Invalid user data - missing username');
+            return;
+        }
+        
+        // Wait for DOM to be ready, then call showUserDetails
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', function() {
+                if (typeof window.showUserDetails === 'function') {
+                    window.showUserDetails(userData);
+                } else {
+                    console.error('showUserDetails function not found!');
+                    alert('Error: showUserDetails function not available. Please refresh the page.');
+                }
+            });
+        } else {
+            // DOM is already ready
+            if (typeof window.showUserDetails === 'function') {
+                window.showUserDetails(userData);
+            } else {
+                console.error('showUserDetails function not found!');
+                alert('Error: showUserDetails function not available. Please refresh the page.');
+            }
+        }
+    } catch (error) {
+        console.error('Error in handleUserRowClick:', error);
+        alert('Error loading user details: ' + error.message);
+    }
+}
 
 function togglePassword(fieldId) {
     const passwordField = document.getElementById(fieldId);
@@ -336,16 +410,25 @@ function togglePassword(fieldId) {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    const modal = document.getElementById('userModal');
-    const closeBtn = document.querySelector('.close');
-    const changePasswordForm = document.getElementById('changePasswordForm');
-    const toggleStatusBtn = document.getElementById('toggleStatusBtn');
-    const deleteUserBtn = document.getElementById('deleteUserBtn');
+    modal = document.getElementById('userModal');
+    var closeBtn = document.querySelector('.close');
+    var changePasswordForm = document.getElementById('changePasswordForm');
+    var toggleStatusBtn = document.getElementById('toggleStatusBtn');
+    var deleteUserBtn = document.getElementById('deleteUserBtn');
+    
+    console.log('DOMContentLoaded - Modal found:', modal !== null);
+    console.log('DOMContentLoaded - Close button found:', closeBtn !== null);
     
     // Close modal when clicking the X button
-    closeBtn.addEventListener('click', function() {
-        modal.style.display = 'none';
-    });
+    if (closeBtn) {
+        closeBtn.addEventListener('click', function() {
+            if (modal) {
+                modal.style.display = 'none';
+            }
+        });
+    } else {
+        console.warn('Close button not found');
+    }
     
     // Close modal when clicking outside of it
     window.addEventListener('click', function(event) {
@@ -361,9 +444,25 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
-    // Function to show user details in modal
-    function showUserDetails(user) {
+    // Function to show user details in modal (must be accessible globally)
+    window.showUserDetails = function(user) {
+        console.log('showUserDetails called with:', user);
+        if (!user) {
+            console.error('No user data provided');
+            alert('No user data provided');
+            return;
+        }
+        
         currentUser = user;
+        
+        // Ensure modal exists
+        if (!modal) {
+            console.error('Modal element not found');
+            alert('Modal element not found');
+            return;
+        }
+        
+        console.log('Modal found, displaying...');
         
         document.getElementById('modalUsername').textContent = user.username;
         document.getElementById('modalRole').textContent = user.role === 'master_admin' ? 'Master Admin' : 'Incident Manager';
@@ -371,20 +470,27 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('modalCreated').textContent = user.created_at;
         
         // Update button text and visibility based on user status
-        toggleStatusBtn.textContent = user.is_active ? 'Deactivate User' : 'Activate User';
+        if (toggleStatusBtn) {
+            toggleStatusBtn.textContent = user.is_active ? 'Deactivate User' : 'Activate User';
+        }
         
         // Set current role in dropdown
-        document.getElementById('newRole').value = user.role;
+        var newRoleSelect = document.getElementById('newRole');
+        if (newRoleSelect) {
+            newRoleSelect.value = user.role;
+        }
         
         // Check if current user is master admin
-        const isMasterAdmin = {{ 'true' if current_user.is_master_admin() else 'false' }};
-        const isCurrentUser = user.is_current_user;
+        var isMasterAdmin = {% if current_user.is_master_admin() %}true{% else %}false{% endif %};
+        var isCurrentUser = user.is_current_user;
         
         // Change Password: Show for master admins (for others) or for users editing themselves
-        if (isMasterAdmin || isCurrentUser) {
-            changePasswordForm.style.display = 'flex';
-        } else {
-            changePasswordForm.style.display = 'none';
+        if (changePasswordForm) {
+            if (isMasterAdmin || isCurrentUser) {
+                changePasswordForm.style.display = 'flex';
+            } else {
+                changePasswordForm.style.display = 'none';
+            }
         }
         
         // Change Role: Only show for master admins, and hide for current user
@@ -394,31 +500,110 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         // Toggle Status: Master admins can toggle anyone, incident managers can only toggle themselves
-        toggleStatusBtn.style.display = (isMasterAdmin || isCurrentUser) ? 'inline-block' : 'none';
+        // But don't allow deactivating yourself
+        if (toggleStatusBtn) {
+            if (isMasterAdmin) {
+                toggleStatusBtn.style.display = isCurrentUser ? 'none' : 'inline-block';
+            } else if (isCurrentUser) {
+                toggleStatusBtn.style.display = 'none'; // Can't toggle your own status
+            } else {
+                toggleStatusBtn.style.display = 'none';
+            }
+        }
         
         // Delete User: Only for master admins, and hide for current user
         if (deleteUserBtn) {
             deleteUserBtn.style.display = (isMasterAdmin && !isCurrentUser) ? 'inline-block' : 'none';
         }
         
-        if (isCurrentUser) {
-            document.querySelector('.user-actions h3').textContent = 'Your Account - Limited Actions';
-        } else {
-            document.querySelector('.user-actions h3').textContent = 'Actions';
+        const actionsHeader = document.querySelector('.user-actions h3');
+        if (actionsHeader) {
+            if (isCurrentUser) {
+                actionsHeader.textContent = 'Your Account - Limited Actions';
+            } else {
+                actionsHeader.textContent = 'Actions';
+            }
         }
         
         modal.style.display = 'block';
+        console.log('Modal should now be visible');
+    };
+    
+    // Use event delegation for table row clicks (more reliable)
+    var usersTable = document.querySelector('.table');
+    if (!usersTable) {
+        // Try alternative selector
+        usersTable = document.querySelector('table');
+    }
+    if (usersTable) {
+        usersTable.addEventListener('click', function(e) {
+            // Find the closest user-row (with fallback for older browsers)
+            var row = e.target.closest ? e.target.closest('.user-row') : null;
+            if (!row) {
+                // Fallback: traverse up the DOM tree
+                var element = e.target;
+                while (element && element !== usersTable) {
+                    if (element.classList && element.classList.contains('user-row')) {
+                        row = element;
+                        break;
+                    }
+                    element = element.parentElement;
+                }
+            }
+            if (!row) {
+                return; // Click wasn't on a user row
+            }
+            
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('User row clicked');
+            
+            try {
+                // Build user data object from data attributes
+                var userData = {
+                    id: parseInt(row.getAttribute('data-user-id')),
+                    username: row.getAttribute('data-user-username'),
+                    email: row.getAttribute('data-user-email'),
+                    role: row.getAttribute('data-user-role'),
+                    is_active: row.getAttribute('data-user-active') === 'true',
+                    created_at: row.getAttribute('data-user-created'),
+                    is_current_user: row.getAttribute('data-user-current') === 'true'
+                };
+                
+                console.log('User data:', JSON.stringify(userData));
+                
+                if (!userData.id || isNaN(userData.id)) {
+                    console.error('Invalid user data - missing or invalid ID:', userData.id);
+                    return;
+                }
+                
+                if (!userData.username) {
+                    console.error('Invalid user data - missing username');
+                    return;
+                }
+                
+                showUserDetails(userData);
+            } catch (error) {
+                console.error('Error loading user data:', error);
+                alert('Error loading user details. Please try again.');
+            }
+        });
+        console.log('Event delegation attached to users table');
+    } else {
+        console.warn('Users table not found!');
     }
     
-    // Add click event listeners to table rows
+    // Keep function for backwards compatibility but it's not needed with delegation
     function addTableRowListeners() {
-        const rows = document.querySelectorAll('.user-row');
-        rows.forEach(row => {
-            row.addEventListener('click', function() {
-                const userData = JSON.parse(this.getAttribute('data-user'));
-                showUserDetails(userData);
-            });
-        });
+        console.log('addTableRowListeners called (using event delegation instead)');
+    }
+    
+    // Make sure event delegation is set up immediately
+    console.log('Setting up event delegation...');
+    if (usersTable) {
+        console.log('Users table found, event delegation ready');
+    } else {
+        console.error('Users table NOT found!');
     }
     
     // Change password form submission
@@ -433,9 +618,9 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         
-        if (confirm(`Are you sure you want to change the password for ${currentUser.username}?`)) {
+        if (confirm('Are you sure you want to change the password for ' + currentUser.username + '?')) {
             try {
-                const response = await fetch(`/admin/users/${currentUser.id}/change-password`, {
+                const response = await fetch('/admin/users/' + currentUser.id + '/change-password', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -476,9 +661,10 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         
-        if (confirm(`Are you sure you want to change the role for ${currentUser.username} to ${newRole === 'master_admin' ? 'Master Admin' : 'Incident Manager'}?`)) {
+        var roleDisplay = newRole === 'master_admin' ? 'Master Admin' : 'Incident Manager';
+        if (confirm('Are you sure you want to change the role for ' + currentUser.username + ' to ' + roleDisplay + '?')) {
             try {
-                const response = await fetch(`/admin/users/${currentUser.id}/change-role`, {
+                const response = await fetch('/admin/users/' + currentUser.id + '/change-role', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -510,14 +696,14 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!currentUser) return;
         
         const action = currentUser.is_active ? 'deactivate' : 'activate';
-        if (confirm(`Are you sure you want to ${action} ${currentUser.username}?`)) {
+        if (confirm('Are you sure you want to ' + action + ' ' + currentUser.username + '?')) {
             try {
-                const response = await fetch(`/admin/users/${currentUser.id}/toggle`, {
+                const response = await fetch('/admin/users/' + currentUser.id + '/toggle', {
                     method: 'POST'
                 });
                 
                 if (response.ok) {
-                    alert(`User ${action}d successfully`);
+                    alert('User ' + action + 'd successfully');
                     location.reload(); // Refresh to show updated status
                 } else {
                     alert('Error toggling user status');
@@ -533,9 +719,9 @@ document.addEventListener('DOMContentLoaded', function() {
     deleteUserBtn.addEventListener('click', async function() {
         if (!currentUser) return;
         
-        if (confirm(`Are you sure you want to delete ${currentUser.username}? This action cannot be undone.`)) {
+        if (confirm('Are you sure you want to delete ' + currentUser.username + '? This action cannot be undone.')) {
             try {
-                const response = await fetch(`/admin/users/${currentUser.id}/delete`, {
+                const response = await fetch('/admin/users/' + currentUser.id + '/delete', {
                     method: 'POST'
                 });
                 
@@ -556,5 +742,4 @@ document.addEventListener('DOMContentLoaded', function() {
     addTableRowListeners();
 });
 </script>
-{% endblock %}
 {% endblock %} 
